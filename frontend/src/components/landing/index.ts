@@ -1,0 +1,5 @@
+export { HeroSection } from "./HeroSection"
+export { FeaturesSection } from "./FeaturesSection"
+export { FeaturedBuildsSection } from "./FeaturedBuildsSection"
+export { CategoriesSection } from "./CategoriesSection"
+export { CTASection } from "./CTASection"
