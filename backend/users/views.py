@@ -59,6 +59,8 @@ class UserSyncView(APIView):
             email=serializer.validated_data["email"],
             display_name=serializer.validated_data.get("display_name"),
             avatar_url=serializer.validated_data.get("avatar_url"),
+            provider=serializer.validated_data.get("provider"),
+            provider_user_id=serializer.validated_data.get("provider_user_id"),
         )
         
         if not user:

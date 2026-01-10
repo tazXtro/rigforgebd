@@ -14,6 +14,7 @@ import logging
 from typing import Optional
 
 from users.repositories.supabase import user_repository
+from users.repositories.auth_identity import auth_identity_repository
 from users.repositories.exceptions import (
     RepositoryError,
     RecordCreationError,
@@ -32,14 +33,17 @@ class UserService:
     and decides how to handle them (retry, return None, re-raise, etc).
     """
     
-    def __init__(self, repository=None):
+    def __init__(self, repository=None, identity_repository=None):
         self.repository = repository or user_repository
+        self.identity_repository = identity_repository or auth_identity_repository
     
     def get_or_create_user(
         self,
         email: str,
         display_name: Optional[str] = None,
         avatar_url: Optional[str] = None,
+        provider: Optional[str] = None,
+        provider_user_id: Optional[str] = None,
     ) -> Optional[dict]:
         """
         Get an existing user by email, or create a new one.
@@ -48,10 +52,14 @@ class UserService:
         Uses email as the auth-agnostic identifier to decouple from
         any specific auth provider (Clerk, Auth0, etc).
         
+        If provider info is provided, also links the auth identity.
+        
         Args:
             email: User's email address (primary identifier)
             display_name: Optional display name
             avatar_url: Optional avatar URL
+            provider: Optional auth provider name (e.g., 'clerk')
+            provider_user_id: Optional external provider user ID
             
         Returns:
             User data dict (existing or newly created), or None on failure
@@ -62,7 +70,10 @@ class UserService:
             
             if existing_user:
                 # Optionally update profile if new data provided
-                return self._update_if_needed(existing_user, display_name, avatar_url)
+                user = self._update_if_needed(existing_user, display_name, avatar_url)
+                # Link identity if provider info provided
+                self._link_identity_if_needed(user["id"], provider, provider_user_id)
+                return user
             
             # Create new user
             user_data = {
@@ -71,13 +82,99 @@ class UserService:
                 "avatar_url": avatar_url,
             }
             
-            return self.repository.create(user_data)
+            user = self.repository.create(user_data)
+            
+            # Link identity if provider info provided
+            if user:
+                self._link_identity_if_needed(user["id"], provider, provider_user_id)
+            
+            return user
             
         except RecordCreationError as e:
             logger.error(f"Failed to create user during sync: {e}")
             return None
         except RepositoryError as e:
             logger.error(f"Database error during user sync: {e}")
+            return None
+    
+    def _link_identity_if_needed(
+        self,
+        user_id: str,
+        provider: Optional[str],
+        provider_user_id: Optional[str],
+    ) -> None:
+        """
+        Link an auth identity to a user if provider info is provided.
+        
+        Silently fails if the identity already exists (idempotent).
+        """
+        if not provider or not provider_user_id:
+            return
+        
+        try:
+            # Check if identity already exists
+            existing = self.identity_repository.get_by_provider_id(
+                provider, provider_user_id
+            )
+            if existing:
+                return  # Already linked
+            
+            self.identity_repository.create(user_id, provider, provider_user_id)
+        except RecordCreationError as e:
+            # Log but don't fail - user creation was successful
+            logger.warning(f"Failed to link identity {provider}:{provider_user_id}: {e}")
+        except RepositoryError as e:
+            logger.warning(f"Database error linking identity: {e}")
+    
+    def get_user_by_provider_id(
+        self,
+        provider: str,
+        provider_user_id: str,
+    ) -> Optional[dict]:
+        """
+        Retrieve a user by their auth provider ID.
+        
+        Useful for webhook handlers that receive provider-specific IDs.
+        
+        Args:
+            provider: The auth provider name (e.g., 'clerk')
+            provider_user_id: The external provider's user ID
+            
+        Returns:
+            User data dict or None if not found/error
+        """
+        try:
+            identity = self.identity_repository.get_by_provider_id(
+                provider, provider_user_id
+            )
+            if not identity:
+                return None
+            return self.repository.get_by_id(identity["user_id"])
+        except RepositoryError as e:
+            logger.error(f"Failed to get user by provider ID: {e}")
+            return None
+    
+    def link_identity(
+        self,
+        user_id: str,
+        provider: str,
+        provider_user_id: str,
+    ) -> Optional[dict]:
+        """
+        Link an auth identity to an existing user.
+        
+        Args:
+            user_id: The internal user's UUID
+            provider: The auth provider name
+            provider_user_id: The external provider's user ID
+            
+        Returns:
+            The created auth identity or None on failure
+        """
+        try:
+            return self.identity_repository.create(user_id, provider, provider_user_id)
+        except RecordCreationError as e:
+            logger.error(f"Failed to link identity: {e}")
             return None
     
     def _update_if_needed(

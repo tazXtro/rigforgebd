@@ -35,6 +35,8 @@ export function useSyncUser() {
                         email: email,
                         display_name: displayName,
                         avatar_url: user.imageUrl,
+                        provider: "clerk",
+                        provider_user_id: user.id,  // Clerk's user ID (e.g., "user_2abc...")
                     }),
                 });
 

@@ -18,6 +18,7 @@ class UserSyncSerializer(serializers.Serializer):
     
     Validates the data sent from frontend after Clerk authentication.
     Email is required as the auth-agnostic identifier.
+    Provider fields are optional but recommended for webhook support.
     """
     
     email = serializers.EmailField(
@@ -34,6 +35,16 @@ class UserSyncSerializer(serializers.Serializer):
         required=False,
         allow_blank=True,
         help_text="URL to user's avatar image"
+    )
+    provider = serializers.CharField(
+        required=False,
+        max_length=50,
+        help_text="Auth provider name (e.g., 'clerk', 'google')"
+    )
+    provider_user_id = serializers.CharField(
+        required=False,
+        max_length=255,
+        help_text="External user ID from the auth provider"
     )
 
 
