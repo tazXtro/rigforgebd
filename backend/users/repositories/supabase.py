@@ -5,11 +5,22 @@ This module handles all direct Supabase queries for user data.
 Follows clean architecture principles:
     - Only raw data access (select, insert, update, delete)
     - Returns dictionaries/lists, never domain objects
+    - Raises custom exceptions on errors (service layer handles them)
     - No business logic
     - No HTTP logic
 """
 
+import logging
 from typing import Optional
+
+from users.repositories.exceptions import (
+    RepositoryError,
+    RecordCreationError,
+    RecordUpdateError,
+    RecordDeletionError,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class UserRepository:
@@ -18,6 +29,12 @@ class UserRepository:
     
     All methods return raw data (dicts/lists) and handle only
     database operations. Business logic belongs in services.py.
+    
+    Raises:
+        RepositoryError: On database connection or query errors
+        RecordCreationError: When insert operations fail
+        RecordUpdateError: When update operations fail
+        RecordDeletionError: When delete operations fail
     
     Note: The Supabase client is lazy-loaded on first access to
     avoid import-time errors when env vars are not set.
@@ -43,6 +60,9 @@ class UserRepository:
             
         Returns:
             User data dict or None if not found
+            
+        Raises:
+            RepositoryError: On database query failure
         """
         try:
             response = (
@@ -55,8 +75,11 @@ class UserRepository:
             )
             return response.data if response else None
         except Exception as e:
-            print(f"[UserRepository] Error fetching user by email: {e}")
-            return None
+            logger.error(f"Failed to fetch user by email '{email}': {e}")
+            raise RepositoryError(
+                f"Failed to fetch user by email: {email}",
+                original_error=e
+            ) from e
     
     def get_by_id(self, user_id: str) -> Optional[dict]:
         """
@@ -67,16 +90,26 @@ class UserRepository:
             
         Returns:
             User data dict or None if not found
+            
+        Raises:
+            RepositoryError: On database query failure
         """
-        response = (
-            self.client
-            .table(self.TABLE_NAME)
-            .select("*")
-            .eq("id", user_id)
-            .maybe_single()
-            .execute()
-        )
-        return response.data
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("*")
+                .eq("id", user_id)
+                .maybe_single()
+                .execute()
+            )
+            return response.data if response else None
+        except Exception as e:
+            logger.error(f"Failed to fetch user by ID '{user_id}': {e}")
+            raise RepositoryError(
+                f"Failed to fetch user by ID: {user_id}",
+                original_error=e
+            ) from e
     
     def create(self, user_data: dict) -> dict:
         """
@@ -87,6 +120,9 @@ class UserRepository:
             
         Returns:
             The created user data including generated ID and timestamps
+            
+        Raises:
+            RecordCreationError: When insert operation fails
         """
         try:
             response = (
@@ -95,10 +131,20 @@ class UserRepository:
                 .insert(user_data)
                 .execute()
             )
-            return response.data[0] if response and response.data else None
-        except Exception as e:
-            print(f"[UserRepository] Error creating user: {e}")
+            if response and response.data:
+                logger.info(f"Created user with email: {user_data.get('email')}")
+                return response.data[0]
+            raise RecordCreationError(
+                f"Insert returned no data for email: {user_data.get('email')}"
+            )
+        except RecordCreationError:
             raise
+        except Exception as e:
+            logger.error(f"Failed to create user: {e}")
+            raise RecordCreationError(
+                f"Failed to create user with email: {user_data.get('email')}",
+                original_error=e
+            ) from e
     
     def update(self, email: str, update_data: dict) -> Optional[dict]:
         """
@@ -110,15 +156,28 @@ class UserRepository:
             
         Returns:
             The updated user data or None if not found
+            
+        Raises:
+            RecordUpdateError: When update operation fails
         """
-        response = (
-            self.client
-            .table(self.TABLE_NAME)
-            .update(update_data)
-            .eq("email", email)
-            .execute()
-        )
-        return response.data[0] if response.data else None
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .update(update_data)
+                .eq("email", email)
+                .execute()
+            )
+            if response and response.data:
+                logger.info(f"Updated user with email: {email}")
+                return response.data[0]
+            return None  # User not found
+        except Exception as e:
+            logger.error(f"Failed to update user '{email}': {e}")
+            raise RecordUpdateError(
+                f"Failed to update user with email: {email}",
+                original_error=e
+            ) from e
     
     def delete(self, email: str) -> bool:
         """
@@ -129,17 +188,29 @@ class UserRepository:
             
         Returns:
             True if deleted, False if not found
+            
+        Raises:
+            RecordDeletionError: When delete operation fails
         """
-        response = (
-            self.client
-            .table(self.TABLE_NAME)
-            .delete()
-            .eq("email", email)
-            .execute()
-        )
-        return len(response.data) > 0 if response.data else False
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .delete()
+                .eq("email", email)
+                .execute()
+            )
+            deleted = len(response.data) > 0 if response and response.data else False
+            if deleted:
+                logger.info(f"Deleted user with email: {email}")
+            return deleted
+        except Exception as e:
+            logger.error(f"Failed to delete user '{email}': {e}")
+            raise RecordDeletionError(
+                f"Failed to delete user with email: {email}",
+                original_error=e
+            ) from e
 
 
 # Lazy singleton - only created when first used
 user_repository = UserRepository()
-
