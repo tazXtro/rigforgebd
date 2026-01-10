@@ -44,15 +44,19 @@ class UserRepository:
         Returns:
             User data dict or None if not found
         """
-        response = (
-            self.client
-            .table(self.TABLE_NAME)
-            .select("*")
-            .eq("email", email)
-            .maybe_single()
-            .execute()
-        )
-        return response.data
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("*")
+                .eq("email", email)
+                .maybe_single()
+                .execute()
+            )
+            return response.data if response else None
+        except Exception as e:
+            print(f"[UserRepository] Error fetching user by email: {e}")
+            return None
     
     def get_by_id(self, user_id: str) -> Optional[dict]:
         """
@@ -84,13 +88,17 @@ class UserRepository:
         Returns:
             The created user data including generated ID and timestamps
         """
-        response = (
-            self.client
-            .table(self.TABLE_NAME)
-            .insert(user_data)
-            .execute()
-        )
-        return response.data[0] if response.data else None
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .insert(user_data)
+                .execute()
+            )
+            return response.data[0] if response and response.data else None
+        except Exception as e:
+            print(f"[UserRepository] Error creating user: {e}")
+            raise
     
     def update(self, email: str, update_data: dict) -> Optional[dict]:
         """
