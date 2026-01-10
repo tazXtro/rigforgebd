@@ -6,6 +6,13 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Search, Menu, Cpu, Monitor, Zap, Users, Sun, Moon, X, Home } from "lucide-react"
 import { useTheme } from "next-themes"
+import {
+    SignInButton,
+    SignUpButton,
+    SignedIn,
+    SignedOut,
+    UserButton,
+} from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -331,21 +338,47 @@ export default function Navbar() {
                             isActive={activeAction === "theme"}
                         />
 
-                        <ActionLink
-                            href="/login"
-                            label="Log in"
-                            onHover={() => setActiveAction("login")}
-                            onLeave={() => setActiveAction(null)}
-                            isActive={activeAction === "login"}
-                        />
+                        {/* Clerk Authentication */}
+                        <SignedOut>
+                            <SignInButton mode="modal">
+                                <button
+                                    onMouseEnter={() => setActiveAction("login")}
+                                    onMouseLeave={() => setActiveAction(null)}
+                                    className="relative px-4 py-2 text-sm font-medium text-foreground/60 hover:text-primary rounded-full transition-colors"
+                                >
+                                    {activeAction === "login" && <TubelightGlow layoutId="tubelight-action" />}
+                                    Log in
+                                </button>
+                            </SignInButton>
 
-                        <ActionLink
-                            href="/signup"
-                            label="Sign up"
-                            onHover={() => setActiveAction("signup")}
-                            onLeave={() => setActiveAction(null)}
-                            isActive={activeAction === "signup"}
-                        />
+                            <SignUpButton mode="modal">
+                                <button
+                                    onMouseEnter={() => setActiveAction("signup")}
+                                    onMouseLeave={() => setActiveAction(null)}
+                                    className="relative px-4 py-2 text-sm font-medium text-foreground/60 hover:text-primary rounded-full transition-colors"
+                                >
+                                    {activeAction === "signup" && <TubelightGlow layoutId="tubelight-action" />}
+                                    Sign up
+                                </button>
+                            </SignUpButton>
+                        </SignedOut>
+
+                        <SignedIn>
+                            <div
+                                className="relative px-2 py-1"
+                                onMouseEnter={() => setActiveAction("user")}
+                                onMouseLeave={() => setActiveAction(null)}
+                            >
+                                {activeAction === "user" && <TubelightGlow layoutId="tubelight-action" />}
+                                <UserButton
+                                    appearance={{
+                                        elements: {
+                                            avatarBox: "h-8 w-8",
+                                        },
+                                    }}
+                                />
+                            </div>
+                        </SignedIn>
                     </div>
                 </div>
 
@@ -434,16 +467,31 @@ export default function Navbar() {
 
                             {/* Mobile Auth */}
                             <div className="flex flex-col gap-2 pt-4 border-t border-border/30">
-                                <Button variant="outline" className="w-full h-10" asChild>
-                                    <Link href="/login" onClick={() => setIsSheetOpen(false)}>
-                                        Log in
-                                    </Link>
-                                </Button>
-                                <Button className="w-full h-10" asChild>
-                                    <Link href="/signup" onClick={() => setIsSheetOpen(false)}>
-                                        Sign up
-                                    </Link>
-                                </Button>
+                                <SignedOut>
+                                    <SignInButton mode="modal">
+                                        <Button variant="outline" className="w-full h-10">
+                                            Log in
+                                        </Button>
+                                    </SignInButton>
+                                    <SignUpButton mode="modal">
+                                        <Button className="w-full h-10">
+                                            Sign up
+                                        </Button>
+                                    </SignUpButton>
+                                </SignedOut>
+
+                                <SignedIn>
+                                    <div className="flex items-center gap-3 px-3 py-2.5">
+                                        <UserButton
+                                            appearance={{
+                                                elements: {
+                                                    avatarBox: "h-9 w-9",
+                                                },
+                                            }}
+                                        />
+                                        <span className="text-sm text-foreground/70">Account</span>
+                                    </div>
+                                </SignedIn>
                             </div>
                         </div>
                     </SheetContent>
