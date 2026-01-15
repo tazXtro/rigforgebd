@@ -41,13 +41,11 @@ INSTALLED_APPS = [
     # Third-party apps
     'rest_framework',
     'corsheaders',
-    # 'django_celery_beat',  # Disabled - not compatible with Django 6
     
     # Local apps
     'core',
     'api',
     'users',
-    'products',
 ]
 
 MIDDLEWARE = [
@@ -142,51 +140,3 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
-
-# Default primary key field type
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# Celery Configuration
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
-CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
-
-# Celery Beat Schedule (for periodic tasks)
-CELERY_BEAT_SCHEDULE = {
-    'scrape-all-retailers-daily': {
-        'task': 'products.tasks.scrape_all_retailers',
-        'schedule': 86400.0,  # Run daily (24 hours)
-        'args': ('gpu',),
-    },
-    'update-product-prices-hourly': {
-        'task': 'products.tasks.update_product_prices',
-        'schedule': 3600.0,  # Run hourly
-    },
-    'cleanup-old-logs-weekly': {
-        'task': 'products.tasks.cleanup_old_scrape_logs',
-        'schedule': 604800.0,  # Run weekly
-        'args': (30,),
-    },
-}
-
-# Cache Configuration (Redis)
-# Fallback to dummy cache if Redis isn't available
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
-    }
-}
-
-# To use Redis, uncomment below and ensure Redis is running:
-# CACHES = {
-#     'default': {
-#         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-#         'LOCATION': 'redis://localhost:6379/1',
-#     }
-# }
