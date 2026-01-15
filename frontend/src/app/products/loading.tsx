@@ -22,7 +22,7 @@ export default function ProductsLoading() {
                 {/* Grid Skeleton */}
                 <div className="flex-1 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                     {[...Array(12)].map((_, i) => (
-                        <div key={i} className="aspect-[4/5] bg-muted animate-pulse rounded-xl" />
+                        <div key={i} className="aspect-4/5 bg-muted animate-pulse rounded-xl" />
                     ))}
                 </div>
             </div>

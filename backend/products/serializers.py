@@ -50,7 +50,16 @@ class ProductListQuerySerializer(serializers.Serializer):
     min_price = serializers.IntegerField(required=False, min_value=0)
     max_price = serializers.IntegerField(required=False, min_value=0)
     in_stock = serializers.BooleanField(required=False)
-    limit = serializers.IntegerField(required=False, default=100, min_value=1, max_value=500)
+    # Pagination parameters
+    page = serializers.IntegerField(required=False, default=1, min_value=1)
+    page_size = serializers.IntegerField(required=False, default=24, min_value=1, max_value=100)
+
+
+class PaginatedProductListSerializer(serializers.Serializer):
+    """Serializer for paginated product list responses."""
+    
+    products = ProductSerializer(many=True)
+    pagination = serializers.DictField(child=serializers.IntegerField())
 
 
 class ScrapedProductSerializer(serializers.Serializer):

@@ -187,7 +187,7 @@ export function ProductCard({ product, viewMode = "grid" }: ProductCardProps) {
                 <p className="text-xs text-muted-foreground mb-1">{product.brand}</p>
 
                 <Link href={`/products/${product.categorySlug}/${product.slug}`}>
-                    <h3 className="font-medium text-sm text-foreground hover:text-primary transition-colors line-clamp-2 min-h-[2.5rem]">
+                    <h3 className="font-medium text-sm text-foreground hover:text-primary transition-colors line-clamp-2 min-h-10">
                         {product.name}
                     </h3>
                 </Link>

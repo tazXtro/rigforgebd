@@ -296,7 +296,7 @@ export default function Navbar() {
             if (link.href === "/") return pathname === "/"
             return pathname.startsWith(link.href)
         })
-        return match?.label || "Home"
+        return match?.label || null
     }, [pathname])
 
     const activeTab = getActiveTab()
@@ -422,7 +422,7 @@ export default function Navbar() {
                             <Menu className="h-5 w-5" aria-hidden="true" />
                         </Button>
                     </SheetTrigger>
-                    <SheetContent side="right" className="w-[300px] sm:w-[350px]">
+                    <SheetContent side="right" className="w-75 sm:w-87.5">
                         <div className="flex flex-col gap-6 mt-6">
                             {/* Mobile Logo */}
                             <Link

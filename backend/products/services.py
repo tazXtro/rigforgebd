@@ -303,9 +303,24 @@ class ProductService:
         try:
             products = self.product_repo.get_by_category(category_slug, limit)
             
-            # Fetch prices for each product
+            if not products:
+                return []
+            
+            # Batch fetch all prices in a single query (avoids N+1 problem)
+            product_ids = [p["id"] for p in products]
+            all_prices = self.price_repo.get_by_product_ids(product_ids)
+            
+            # Group prices by product_id for efficient lookup
+            prices_by_product = {}
+            for price in all_prices:
+                pid = price["product_id"]
+                if pid not in prices_by_product:
+                    prices_by_product[pid] = []
+                prices_by_product[pid].append(price)
+            
+            # Attach prices to each product
             for product in products:
-                prices = self.price_repo.get_by_product_id(product["id"])
+                prices = prices_by_product.get(product["id"], [])
                 retailers = []
                 for price in prices:
                     retailer_data = price.get("retailers", {})
@@ -323,6 +338,137 @@ class ProductService:
             logger.error(f"Failed to get products by category: {e}")
             return []
     
+    def get_all_products(self, limit: int = 500) -> List[dict]:
+        """
+        Get all products with their prices.
+        
+        Args:
+            limit: Maximum products to return
+            
+        Returns:
+            List of products with retailer prices
+        """
+        try:
+            products = self.product_repo.get_all(limit)
+            
+            if not products:
+                return []
+            
+            # Batch fetch all prices in a single query (avoids N+1 problem)
+            product_ids = [p["id"] for p in products]
+            all_prices = self.price_repo.get_by_product_ids(product_ids)
+            
+            # Group prices by product_id for efficient lookup
+            prices_by_product = {}
+            for price in all_prices:
+                pid = price["product_id"]
+                if pid not in prices_by_product:
+                    prices_by_product[pid] = []
+                prices_by_product[pid].append(price)
+            
+            # Attach prices to each product
+            for product in products:
+                prices = prices_by_product.get(product["id"], [])
+                retailers = []
+                for price in prices:
+                    retailer_data = price.get("retailers", {})
+                    retailers.append({
+                        "name": retailer_data.get("name", "Unknown"),
+                        "price": float(price["price"]),
+                        "inStock": price.get("in_stock", True),
+                        "url": price["product_url"],
+                    })
+                product["retailers"] = retailers
+            
+            return products
+            
+        except ProductRepositoryError as e:
+            logger.error(f"Failed to get all products: {e}")
+            return []
+    
+    def get_products_paginated(
+        self,
+        page: int = 1,
+        page_size: int = 24,
+        category_slug: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get products with server-side pagination.
+        
+        This is the preferred method for listing products as it:
+        - Only fetches data needed for the current page
+        - Reduces payload size and load time
+        - Returns pagination metadata for UI
+        
+        Args:
+            page: Page number (1-indexed)
+            page_size: Number of products per page
+            category_slug: Optional category filter
+            
+        Returns:
+            Dict with 'products' list and 'pagination' metadata
+        """
+        try:
+            # Get paginated products from repository
+            result = self.product_repo.get_paginated(
+                page=page,
+                page_size=page_size,
+                category_slug=category_slug,
+            )
+            
+            products = result["products"]
+            
+            if not products:
+                return {
+                    "products": [],
+                    "pagination": result["pagination"],
+                }
+            
+            # Batch fetch prices for this page's products only
+            product_ids = [p["id"] for p in products]
+            all_prices = self.price_repo.get_by_product_ids(product_ids)
+            
+            # Group prices by product_id
+            prices_by_product = {}
+            for price in all_prices:
+                pid = price["product_id"]
+                if pid not in prices_by_product:
+                    prices_by_product[pid] = []
+                prices_by_product[pid].append(price)
+            
+            # Attach prices to each product
+            for product in products:
+                prices = prices_by_product.get(product["id"], [])
+                retailers = []
+                for price in prices:
+                    retailer_data = price.get("retailers", {})
+                    retailers.append({
+                        "name": retailer_data.get("name", "Unknown"),
+                        "price": float(price["price"]),
+                        "inStock": price.get("in_stock", True),
+                        "url": price["product_url"],
+                    })
+                product["retailers"] = retailers
+            
+            return {
+                "products": products,
+                "pagination": result["pagination"],
+            }
+            
+        except ProductRepositoryError as e:
+            logger.error(f"Failed to get paginated products: {e}")
+            return {
+                "products": [],
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total_count": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_prev": False,
+                },
+            }
+    
     def get_all_retailers(self) -> List[dict]:
         """Get all active retailers."""
         try:
@@ -330,8 +476,22 @@ class ProductService:
         except ProductRepositoryError as e:
             logger.error(f"Failed to get retailers: {e}")
             return []
+    
+    def get_category_counts(self) -> Dict[str, int]:
+        """
+        Get product count for each category.
+        
+        Returns:
+            Dict mapping category_slug to count
+        """
+        try:
+            return self.product_repo.get_category_counts()
+        except ProductRepositoryError as e:
+            logger.error(f"Failed to get category counts: {e}")
+            return {}
 
 
 # Singleton instances
 product_ingestion_service = ProductIngestionService()
 product_service = ProductService()
+

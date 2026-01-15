@@ -117,7 +117,7 @@ export function ProductFilters({ filters, onFilterChange, onClearAll }: ProductF
         filters.brands.length > 0 ||
         filters.retailers.length > 0 ||
         filters.minPrice > 0 ||
-        filters.maxPrice < 500000 ||
+        filters.maxPrice < 1000000 ||
         filters.inStock
 
     return (
@@ -164,9 +164,9 @@ export function ProductFilters({ filters, onFilterChange, onClearAll }: ProductF
                                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">৳</span>
                                 <input
                                     type="number"
-                                    value={filters.maxPrice === 500000 ? "" : filters.maxPrice}
-                                    onChange={(e) => onFilterChange("maxPrice", Number(e.target.value) || 500000)}
-                                    placeholder="500,000"
+                                    value={filters.maxPrice === 1000000 ? "" : filters.maxPrice}
+                                    onChange={(e) => onFilterChange("maxPrice", Number(e.target.value) || 1000000)}
+                                    placeholder="1,000,000"
                                     className="w-full h-9 pl-6 pr-2 bg-background border border-border/50 rounded-lg text-sm focus:outline-none focus:border-primary"
                                 />
                             </div>
@@ -179,7 +179,7 @@ export function ProductFilters({ filters, onFilterChange, onClearAll }: ProductF
                             { label: "Under ৳10K", min: 0, max: 10000 },
                             { label: "৳10K-50K", min: 10000, max: 50000 },
                             { label: "৳50K-100K", min: 50000, max: 100000 },
-                            { label: "Over ৳100K", min: 100000, max: 500000 },
+                            { label: "Over ৳100K", min: 100000, max: 1000000 },
                         ].map((range) => (
                             <button
                                 key={range.label}

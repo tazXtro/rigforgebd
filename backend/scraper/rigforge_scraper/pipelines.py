@@ -129,3 +129,80 @@ class ValidationPipeline:
 class DropItem(Exception):
     """Exception to drop an item from the pipeline."""
     pass
+
+
+class SupabaseIngestionPipeline:
+    """
+    Pipeline for saving scraped items to Supabase database.
+    
+    Uses the Django products service for ingestion.
+    This pipeline is optional and only enabled when --save flag is used.
+    """
+    
+    def __init__(self):
+        self.ingestion_service = None
+        self.items_saved = 0
+        self.items_failed = 0
+    
+    def open_spider(self, spider):
+        """Initialize Django and the ingestion service when spider opens."""
+        # Set up Django settings
+        import os
+        import sys
+        
+        # Add backend to path
+        backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if backend_path not in sys.path:
+            sys.path.insert(0, backend_path)
+        
+        # Configure Django settings
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+        
+        import django
+        django.setup()
+        
+        # Now import the service
+        from products.services import product_ingestion_service
+        self.ingestion_service = product_ingestion_service
+        
+        logger.info("SupabaseIngestionPipeline initialized")
+    
+    def close_spider(self, spider):
+        """Log summary when spider closes."""
+        logger.info(
+            f"Supabase ingestion complete: {self.items_saved} saved, "
+            f"{self.items_failed} failed"
+        )
+    
+    def process_item(self, item, spider):
+        """Save item to Supabase database."""
+        from itemadapter import ItemAdapter
+        adapter = ItemAdapter(item)
+        
+        # Convert to dict for ingestion service
+        scraped_data = {
+            "name": adapter.get("name"),
+            "price": adapter.get("price"),
+            "product_url": adapter.get("product_url"),
+            "retailer_slug": adapter.get("retailer_slug"),
+            "category": adapter.get("category"),
+            "image_url": adapter.get("image_url"),
+            "brand": adapter.get("brand"),
+            "in_stock": adapter.get("in_stock", True),
+            "specs": adapter.get("specs", {}),
+        }
+        
+        try:
+            result = self.ingestion_service.ingest_scraped_product(scraped_data)
+            if result:
+                self.items_saved += 1
+                logger.debug(f"Saved to DB: {scraped_data['name']}")
+            else:
+                self.items_failed += 1
+                logger.warning(f"Failed to save: {scraped_data['name']}")
+        except Exception as e:
+            self.items_failed += 1
+            logger.error(f"Error saving to DB: {e}")
+        
+        return item
+

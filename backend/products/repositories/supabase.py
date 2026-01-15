@@ -128,6 +128,140 @@ class ProductRepository:
                 original_error=e
             ) from e
     
+    def get_all(self, limit: int = 500) -> List[dict]:
+        """
+        Retrieve all products.
+        
+        Args:
+            limit: Maximum number of products to return
+            
+        Returns:
+            List of product dicts
+        """
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("*")
+                .limit(limit)
+                .execute()
+            )
+            return response.data if response and response.data else []
+        except Exception as e:
+            logger.error(f"Failed to fetch all products: {e}")
+            raise ProductRepositoryError(
+                "Failed to fetch all products",
+                original_error=e
+            ) from e
+    
+    def get_paginated(
+        self,
+        page: int = 1,
+        page_size: int = 24,
+        category_slug: Optional[str] = None,
+    ) -> dict:
+        """
+        Retrieve products with pagination.
+        
+        Uses offset-based pagination which works well with Supabase.
+        Returns both the products and pagination metadata.
+        
+        Args:
+            page: Page number (1-indexed)
+            page_size: Number of products per page
+            category_slug: Optional category filter
+            
+        Returns:
+            Dict with 'products' list and 'pagination' metadata
+        """
+        try:
+            # Calculate offset
+            offset = (page - 1) * page_size
+            
+            # Build base query for counting
+            count_query = self.client.table(self.TABLE_NAME).select("*", count="exact")
+            if category_slug:
+                count_query = count_query.eq("category_slug", category_slug)
+            
+            # Get total count
+            count_response = count_query.execute()
+            total_count = count_response.count if count_response else 0
+            
+            # Build query for fetching products
+            query = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("*")
+                .order("created_at", desc=True)  # Newest first
+                .range(offset, offset + page_size - 1)
+            )
+            
+            if category_slug:
+                query = query.eq("category_slug", category_slug)
+            
+            response = query.execute()
+            products = response.data if response and response.data else []
+            
+            # Calculate pagination metadata
+            total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+            
+            return {
+                "products": products,
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total_count": total_count,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1,
+                },
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch paginated products: {e}")
+            raise ProductRepositoryError(
+                "Failed to fetch paginated products",
+                original_error=e
+            ) from e
+    
+    def get_category_counts(self) -> dict:
+        """
+        Get count of products per category.
+        
+        Returns:
+            Dict mapping category_slug to product count
+        """
+        try:
+            # Fetch all products and count by category_slug
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("category_slug")
+                .execute()
+            )
+            
+            if not response or not response.data:
+                return {}
+            
+            # Count products per category
+            counts = {}
+            for product in response.data:
+                slug = product.get("category_slug", "")
+                if slug:
+                    counts[slug] = counts.get(slug, 0) + 1
+            
+            # Add total count
+            counts[""] = len(response.data)
+            
+            return counts
+            
+        except Exception as e:
+            logger.error(f"Failed to get category counts: {e}")
+            raise ProductRepositoryError(
+                "Failed to get category counts",
+                original_error=e
+            ) from e
+    
     def create(self, product_data: dict) -> dict:
         """
         Create a new product in the database.
@@ -342,6 +476,38 @@ class PriceRepository:
             logger.error(f"Failed to fetch prices for product '{product_id}': {e}")
             raise ProductRepositoryError(
                 f"Failed to fetch prices for product: {product_id}",
+                original_error=e
+            ) from e
+    
+    def get_by_product_ids(self, product_ids: List[str]) -> List[dict]:
+        """
+        Retrieve all price records for multiple products in a single query.
+        
+        This is more efficient than calling get_by_product_id for each product
+        as it avoids the N+1 query problem and reduces socket pressure.
+        
+        Args:
+            product_ids: List of product UUIDs
+            
+        Returns:
+            List of price records with retailer data
+        """
+        if not product_ids:
+            return []
+        
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("*, retailers(*)")
+                .in_("product_id", product_ids)
+                .execute()
+            )
+            return response.data if response and response.data else []
+        except Exception as e:
+            logger.error(f"Failed to fetch prices for {len(product_ids)} products: {e}")
+            raise ProductRepositoryError(
+                f"Failed to fetch prices for multiple products",
                 original_error=e
             ) from e
     

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import {
@@ -9,6 +9,10 @@ import {
     ChevronDown,
     ArrowUpDown,
     Package,
+    Loader2,
+    AlertCircle,
+    ChevronLeft,
+    ChevronRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -17,10 +21,11 @@ import {
     CategoryNav,
     ProductFilters,
     MobileFilters,
-    mockProducts,
     filterProducts,
     sortProducts,
 } from "@/components/products"
+import { Product } from "@/components/products/ProductCard"
+import { fetchProducts, fetchCategoryCounts, PaginationInfo } from "@/lib/productsApi"
 
 interface ProductsPageClientProps {
     initialCategory?: string
@@ -34,11 +39,23 @@ const sortOptions = [
     { value: "name_desc", label: "Name: Z to A" },
 ]
 
+const PAGE_SIZE = 24 // Products per page
+
 export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
 
-    // State
+    // Products state
+    const [products, setProducts] = useState<Product[]>([])
+    const [pagination, setPagination] = useState<PaginationInfo | null>(null)
+    const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({})
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
+
+    // Pagination state from URL
+    const currentPage = parseInt(searchParams.get("page") || "1", 10)
+
+    // Filter state
     const [search, setSearch] = useState(searchParams.get("q") || "")
     const [category, setCategory] = useState(initialCategory)
     const [sortBy, setSortBy] = useState(searchParams.get("sort") || "newest")
@@ -48,15 +65,42 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
         brands: [] as string[],
         retailers: [] as string[],
         minPrice: 0,
-        maxPrice: 500000,
+        maxPrice: 1000000,
         inStock: false,
     })
 
-    // Filter and sort products
+    // Fetch products with pagination
+    useEffect(() => {
+        async function loadData() {
+            setIsLoading(true)
+            setError(null)
+            try {
+                const [productsResponse, countsData] = await Promise.all([
+                    fetchProducts({
+                        category: category || undefined,
+                        page: currentPage,
+                        page_size: PAGE_SIZE,
+                    }),
+                    fetchCategoryCounts()
+                ])
+                setProducts(productsResponse.products)
+                setPagination(productsResponse.pagination)
+                setCategoryCounts(countsData)
+            } catch (err) {
+                console.error("Failed to fetch data:", err)
+                setError("Failed to load products. Please try again later.")
+            } finally {
+                setIsLoading(false)
+            }
+        }
+        loadData()
+    }, [category, currentPage])
+
+    // Client-side filtering for search/brand/price (applied to current page)
     const filteredProducts = useMemo(() => {
-        const filtered = filterProducts(mockProducts, {
+        const filtered = filterProducts(products, {
             search,
-            category,
+            category: "", // Category already filtered server-side
             brands: filters.brands,
             retailers: filters.retailers,
             minPrice: filters.minPrice,
@@ -64,7 +108,19 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
             inStock: filters.inStock,
         })
         return sortProducts(filtered, sortBy)
-    }, [search, category, filters, sortBy])
+    }, [products, search, filters, sortBy])
+
+    // Pagination handlers
+    const handlePageChange = useCallback((newPage: number) => {
+        const params = new URLSearchParams(searchParams.toString())
+        params.set("page", newPage.toString())
+        
+        const basePath = category ? `/products/${category}` : "/products"
+        router.push(`${basePath}?${params.toString()}`)
+        
+        // Scroll to top smoothly
+        window.scrollTo({ top: 0, behavior: "smooth" })
+    }, [router, searchParams, category])
 
     // Handlers
     const handleFilterChange = useCallback((key: string, value: unknown) => {
@@ -76,7 +132,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
             brands: [],
             retailers: [],
             minPrice: 0,
-            maxPrice: 500000,
+            maxPrice: 1000000,
             inStock: false,
         })
         setSearch("")
@@ -84,7 +140,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
 
     const handleCategoryChange = useCallback((slug: string) => {
         setCategory(slug)
-        // Update URL
+        // Reset to page 1 when changing category
         if (slug) {
             router.push(`/products/${slug}`)
         } else {
@@ -131,7 +187,12 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
                     </h1>
                     <p className="text-muted-foreground flex items-center gap-2">
                         <Package className="w-4 h-4" />
-                        <span>{filteredProducts.length} products found</span>
+                        <span>
+                            {pagination 
+                                ? `${pagination.total_count} products found`
+                                : `${filteredProducts.length} products found`
+                            }
+                        </span>
                     </p>
                 </motion.div>
 
@@ -153,6 +214,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
                             onCategoryChange={handleCategoryChange}
                             onClearAll={handleClearFilters}
                             resultCount={filteredProducts.length}
+                            categoryCounts={categoryCounts}
                         />
 
                         {/* Sort Dropdown */}
@@ -240,6 +302,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
                         <CategoryNav
                             activeCategory={category}
                             onCategoryChange={handleCategoryChange}
+                            categoryCounts={categoryCounts}
                         />
 
                         <div className="border-t border-border/50 pt-6">
@@ -254,37 +317,161 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
 
                 {/* Product Grid */}
                 <div className="flex-1 min-w-0">
-                    <ProductGrid products={filteredProducts} viewMode={viewMode} />
-
-                    {/* Pagination placeholder */}
-                    {filteredProducts.length > 0 && (
-                        <div className="mt-8 flex justify-center">
-                            <div className="flex items-center gap-2">
-                                <button className="px-4 py-2 text-sm bg-card border border-border/50 rounded-lg text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors">
-                                    Previous
-                                </button>
-                                {[1, 2, 3].map((page) => (
-                                    <button
-                                        key={page}
-                                        className={cn(
-                                            "w-10 h-10 text-sm rounded-lg transition-colors",
-                                            page === 1
-                                                ? "bg-primary text-primary-foreground"
-                                                : "bg-card border border-border/50 text-muted-foreground hover:text-foreground hover:border-primary/30"
-                                        )}
-                                    >
-                                        {page}
-                                    </button>
-                                ))}
-                                <span className="text-muted-foreground">...</span>
-                                <button className="px-4 py-2 text-sm bg-card border border-border/50 rounded-lg text-muted-foreground hover:text-foreground hover:border-primary/30 transition-colors">
-                                    Next
-                                </button>
-                            </div>
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center py-20">
+                            <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
+                            <p className="text-muted-foreground">Loading products...</p>
                         </div>
+                    ) : error ? (
+                        <div className="flex flex-col items-center justify-center py-20">
+                            <AlertCircle className="w-10 h-10 text-destructive mb-4" />
+                            <p className="text-destructive font-medium mb-2">Error loading products</p>
+                            <p className="text-muted-foreground text-sm">{error}</p>
+                        </div>
+                    ) : filteredProducts.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-20">
+                            <Package className="w-10 h-10 text-muted-foreground mb-4" />
+                            <p className="text-muted-foreground font-medium mb-2">No products found</p>
+                            <p className="text-muted-foreground text-sm">
+                                {search || category ? "Try adjusting your filters" : "Products will appear here once they are added to the database"}
+                            </p>
+                        </div>
+                    ) : (
+                        <ProductGrid products={filteredProducts} viewMode={viewMode} />
+                    )}
+
+                    {/* Pagination */}
+                    {pagination && pagination.total_pages > 1 && (
+                        <Pagination
+                            pagination={pagination}
+                            onPageChange={handlePageChange}
+                        />
                     )}
                 </div>
             </div>
         </div>
+    )
+}
+
+/**
+ * Pagination component with smart page number display
+ */
+function Pagination({
+    pagination,
+    onPageChange,
+}: {
+    pagination: PaginationInfo
+    onPageChange: (page: number) => void
+}) {
+    const { page, total_pages, has_prev, has_next } = pagination
+
+    // Generate page numbers to display
+    const getPageNumbers = (): (number | "...")[] => {
+        const pages: (number | "...")[] = []
+        const showPages = 5 // Max visible page numbers
+
+        if (total_pages <= showPages + 2) {
+            // Show all pages if total is small
+            for (let i = 1; i <= total_pages; i++) {
+                pages.push(i)
+            }
+        } else {
+            // Always show first page
+            pages.push(1)
+
+            if (page > 3) {
+                pages.push("...")
+            }
+
+            // Show pages around current
+            const start = Math.max(2, page - 1)
+            const end = Math.min(total_pages - 1, page + 1)
+
+            for (let i = start; i <= end; i++) {
+                pages.push(i)
+            }
+
+            if (page < total_pages - 2) {
+                pages.push("...")
+            }
+
+            // Always show last page
+            pages.push(total_pages)
+        }
+
+        return pages
+    }
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4"
+        >
+            {/* Page info */}
+            <p className="text-sm text-muted-foreground order-2 sm:order-1">
+                Page {page} of {total_pages}
+            </p>
+
+            {/* Page controls */}
+            <div className="flex items-center gap-2 order-1 sm:order-2">
+                {/* Previous button */}
+                <button
+                    onClick={() => onPageChange(page - 1)}
+                    disabled={!has_prev}
+                    className={cn(
+                        "flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-colors",
+                        has_prev
+                            ? "bg-card border border-border/50 text-foreground hover:border-primary/30 hover:bg-muted"
+                            : "bg-muted text-muted-foreground cursor-not-allowed"
+                    )}
+                >
+                    <ChevronLeft className="w-4 h-4" />
+                    <span className="hidden sm:inline">Previous</span>
+                </button>
+
+                {/* Page numbers */}
+                <div className="flex items-center gap-1">
+                    {getPageNumbers().map((pageNum, idx) =>
+                        pageNum === "..." ? (
+                            <span
+                                key={`ellipsis-${idx}`}
+                                className="px-2 text-muted-foreground"
+                            >
+                                ...
+                            </span>
+                        ) : (
+                            <button
+                                key={pageNum}
+                                onClick={() => onPageChange(pageNum)}
+                                className={cn(
+                                    "w-10 h-10 text-sm rounded-lg transition-colors",
+                                    pageNum === page
+                                        ? "bg-primary text-primary-foreground font-medium"
+                                        : "bg-card border border-border/50 text-foreground hover:border-primary/30 hover:bg-muted"
+                                )}
+                            >
+                                {pageNum}
+                            </button>
+                        )
+                    )}
+                </div>
+
+                {/* Next button */}
+                <button
+                    onClick={() => onPageChange(page + 1)}
+                    disabled={!has_next}
+                    className={cn(
+                        "flex items-center gap-1 px-3 py-2 text-sm rounded-lg transition-colors",
+                        has_next
+                            ? "bg-card border border-border/50 text-foreground hover:border-primary/30 hover:bg-muted"
+                            : "bg-muted text-muted-foreground cursor-not-allowed"
+                    )}
+                >
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight className="w-4 h-4" />
+                </button>
+            </div>
+        </motion.div>
     )
 }

@@ -62,8 +62,8 @@ class StartechSpider(BaseRetailerSpider):
         Initialize the spider with optional arguments.
         
         Args:
-            category: Specific category to scrape (e.g., 'processor')
-            limit: Maximum number of products to scrape
+            category: Specific category to scrape (e.g., 'processor') or 'all' for all categories
+            limit: Maximum number of products to scrape (omit for unlimited)
         """
         super().__init__(*args, **kwargs)
         
@@ -71,12 +71,17 @@ class StartechSpider(BaseRetailerSpider):
         self.items_scraped = 0
         
         # Set start URLs based on category argument
-        if category:
+        if category == "all":
+            # Scrape ALL categories
+            self.start_urls = list(self.all_category_urls.values())
+            logger.info(f"Starting with ALL categories ({len(self.start_urls)} URLs)")
+        elif category:
             if category in self.all_category_urls:
                 self.start_urls = [self.all_category_urls[category]]
                 logger.info(f"Starting with category: {category}")
             else:
-                logger.warning(f"Unknown category '{category}', using default")
+                logger.warning(f"Unknown category '{category}', using default (processor)")
+        # else: use default start_urls (processor only)
     
     def parse(self, response):
         """

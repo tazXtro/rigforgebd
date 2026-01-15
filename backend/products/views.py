@@ -29,11 +29,18 @@ class ProductListView(APIView):
     """
     GET /api/products/
     
-    List products with optional filtering.
+    List products with server-side pagination.
+    
+    Query Parameters:
+        - page: Page number (default: 1)
+        - page_size: Items per page (default: 24, max: 100)
+        - category: Category slug to filter by
+    
+    Response includes pagination metadata for efficient loading.
     """
     
     def get(self, request):
-        """Get list of products with their prices."""
+        """Get paginated list of products with their prices."""
         # Validate query params
         query_serializer = ProductListQuerySerializer(data=request.query_params)
         if not query_serializer.is_valid():
@@ -43,17 +50,24 @@ class ProductListView(APIView):
             )
         
         params = query_serializer.validated_data
+        page = params.get("page", 1)
+        page_size = params.get("page_size", 24)
         category = params.get("category")
-        limit = params.get("limit", 100)
         
-        if category:
-            products = product_service.get_products_by_category(category, limit)
-        else:
-            # TODO: Implement get_all_products when needed
-            products = []
+        # Use paginated method for better performance
+        result = product_service.get_products_paginated(
+            page=page,
+            page_size=page_size,
+            category_slug=category,
+        )
         
-        serializer = ProductSerializer(products, many=True)
-        return Response(serializer.data)
+        # Serialize products
+        serializer = ProductSerializer(result["products"], many=True)
+        
+        return Response({
+            "products": serializer.data,
+            "pagination": result["pagination"],
+        })
 
 
 class ProductDetailView(APIView):
@@ -117,3 +131,17 @@ class ProductIngestionView(APIView):
         
         result_serializer = IngestionResultSerializer(results)
         return Response(result_serializer.data, status=status.HTTP_200_OK)
+
+
+class CategoryCountsView(APIView):
+    """
+    GET /api/products/categories/counts/
+    
+    Get product counts per category.
+    """
+    
+    def get(self, request):
+        """Get product count for each category."""
+        counts = product_service.get_category_counts()
+        return Response(counts)
+

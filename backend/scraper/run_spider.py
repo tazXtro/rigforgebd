@@ -6,7 +6,7 @@ Usage:
     python run_spider.py startech
     python run_spider.py startech --limit 5
     python run_spider.py startech --category processor --limit 10
-    python run_spider.py startech --dry-run
+    python run_spider.py startech --save              # Save to database
     python run_spider.py startech --output products.json
 
 This script provides a convenient way to run spiders manually
@@ -22,20 +22,26 @@ from datetime import datetime
 # Add the scraper directory to the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Add backend to path for Django imports
+backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
+
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
+from scrapy import signals
 
 
-def collect_items(items_list):
-    """Create a pipeline that collects items into a list."""
-    class CollectorPipeline:
-        def process_item(self, item, spider):
-            items_list.append(dict(item))
-            return item
-    return CollectorPipeline
+# Global list to collect items
+collected_items = []
 
 
-def run_spider(spider_name, category=None, limit=None, dry_run=False, output=None):
+def item_scraped_handler(item, response, spider):
+    """Signal handler to collect scraped items."""
+    collected_items.append(dict(item))
+
+
+def run_spider(spider_name, category=None, limit=None, save_to_db=False, output=None):
     """
     Run a spider with the given options.
     
@@ -43,21 +49,20 @@ def run_spider(spider_name, category=None, limit=None, dry_run=False, output=Non
         spider_name: Name of the spider to run (e.g., 'startech')
         category: Optional category to scrape
         limit: Optional limit on number of items
-        dry_run: If True, only print items without saving
+        save_to_db: If True, save items to Supabase database
         output: Optional output file path (JSON format)
     """
+    global collected_items
+    collected_items = []  # Reset for each run
+    
     # Get Scrapy settings
     settings = get_project_settings()
     
-    # Collect items for dry-run or output
-    collected_items = []
-    
-    if dry_run or output:
-        # Disable database pipelines for dry-run
-        settings["ITEM_PIPELINES"] = {
-            "rigforge_scraper.pipelines.CleaningPipeline": 100,
-            "rigforge_scraper.pipelines.ValidationPipeline": 200,
-        }
+    # Enable database pipeline if --save flag is used
+    if save_to_db:
+        current_pipelines = settings.get("ITEM_PIPELINES", {})
+        current_pipelines["rigforge_scraper.pipelines.SupabaseIngestionPipeline"] = 300
+        settings["ITEM_PIPELINES"] = current_pipelines
     
     # Create crawler process
     process = CrawlerProcess(settings)
@@ -69,26 +74,6 @@ def run_spider(spider_name, category=None, limit=None, dry_run=False, output=Non
     if limit:
         spider_kwargs["limit"] = limit
     
-    # Add item collector
-    class ItemCollectorPipeline:
-        def process_item(self, item, spider):
-            collected_items.append(dict(item))
-            return item
-    
-    # Monkey-patch to add our collector
-    original_pipelines = settings.get("ITEM_PIPELINES", {})
-    settings["ITEM_PIPELINES"] = {
-        **original_pipelines,
-        "__main__.ItemCollectorPipeline": 300,
-    }
-    
-    # We need to use a different approach for collecting items
-    # Since we can't easily add pipelines dynamically, we'll use signals
-    from scrapy import signals
-    
-    def item_scraped(item, response, spider):
-        collected_items.append(dict(item))
-    
     # Get the spider class
     if spider_name == "startech":
         from rigforge_scraper.spiders.startech import StartechSpider
@@ -98,38 +83,37 @@ def run_spider(spider_name, category=None, limit=None, dry_run=False, output=Non
         print("Available spiders: startech")
         sys.exit(1)
     
-    # Connect to item_scraped signal
-    from scrapy.signalmanager import dispatcher
-    dispatcher.connect(item_scraped, signal=signals.item_scraped)
-    
-    # Run the spider
+    # Print header
     print(f"\n{'='*60}")
     print(f"RigForge Scraper - Running {spider_name} spider")
     print(f"{'='*60}")
-    print(f"Category: {category or 'all'}")
+    print(f"Category: {category or 'default (processor)'}")
     print(f"Limit: {limit or 'none'}")
-    print(f"Dry run: {dry_run}")
-    print(f"Output: {output or 'console'}")
+    print(f"Save to DB: {save_to_db}")
+    print(f"Output file: {output or 'none'}")
     print(f"{'='*60}\n")
     
-    process.crawl(spider_cls, **spider_kwargs)
+    # Create a crawler and connect the signal
+    crawler = process.create_crawler(spider_cls)
+    crawler.signals.connect(item_scraped_handler, signal=signals.item_scraped)
+    
+    # Start crawling
+    process.crawl(crawler, **spider_kwargs)
     process.start()
     
     # Process collected items
     print(f"\n{'='*60}")
     print(f"Scraping complete! Collected {len(collected_items)} items")
+    if save_to_db:
+        print(f"Items were saved to Supabase database")
     print(f"{'='*60}\n")
     
-    if dry_run:
-        # Print items in a readable format
+    # Always print summary of items
+    if collected_items:
+        print("\nScraped Items Summary:")
         for i, item in enumerate(collected_items, 1):
-            print(f"\n--- Item {i} ---")
-            print(f"Name: {item.get('name', 'N/A')}")
-            print(f"Price: ৳ {item.get('price', 0):,.0f}")
-            print(f"Category: {item.get('category', 'N/A')}")
-            print(f"Brand: {item.get('brand', 'N/A')}")
-            print(f"In Stock: {'Yes' if item.get('in_stock', True) else 'No'}")
-            print(f"URL: {item.get('product_url', 'N/A')}")
+            price = item.get('price', 0)
+            print(f"  {i}. {item.get('name', 'N/A')[:60]}... - ৳{price:,.0f}")
     
     if output:
         # Save to JSON file
@@ -153,11 +137,16 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python run_spider.py startech
-    python run_spider.py startech --limit 5
-    python run_spider.py startech --category processor --limit 10
-    python run_spider.py startech --dry-run
-    python run_spider.py startech --output products.json
+    python run_spider.py startech                           # Dry run (no DB save)
+    python run_spider.py startech --limit 5                 # Scrape 5 items
+    python run_spider.py startech --category graphics-card  # Specific category
+    python run_spider.py startech --save                    # SAVE TO DATABASE
+    python run_spider.py startech --save --limit 10         # Save 10 items to DB
+    python run_spider.py startech --output products.json    # Export to JSON
+
+Available categories:
+    processor, graphics-card, motherboard, ram, storage,
+    power-supply, casing, cooling, monitor
         """
     )
     
@@ -179,9 +168,9 @@ Examples:
     )
     
     parser.add_argument(
-        "--dry-run", "-d",
+        "--save", "-s",
         action="store_true",
-        help="Print scraped items without saving to database"
+        help="Save scraped items to Supabase database"
     )
     
     parser.add_argument(
@@ -195,7 +184,7 @@ Examples:
         spider_name=args.spider,
         category=args.category,
         limit=args.limit,
-        dry_run=args.dry_run,
+        save_to_db=args.save,
         output=args.output,
     )
 

@@ -19,6 +19,7 @@ interface MobileFiltersProps {
     onCategoryChange: (slug: string) => void
     onClearAll: () => void
     resultCount: number
+    categoryCounts?: Record<string, number>
 }
 
 export function MobileFilters({
@@ -28,6 +29,7 @@ export function MobileFilters({
     onCategoryChange,
     onClearAll,
     resultCount,
+    categoryCounts = {},
 }: MobileFiltersProps) {
     const [isOpen, setIsOpen] = useState(false)
 
@@ -36,7 +38,7 @@ export function MobileFilters({
         filters.retailers.length +
         (filters.inStock ? 1 : 0) +
         (filters.minPrice > 0 ? 1 : 0) +
-        (filters.maxPrice < 500000 ? 1 : 0)
+        (filters.maxPrice < 1000000 ? 1 : 0)
 
     return (
         <>
@@ -95,6 +97,7 @@ export function MobileFilters({
                                         onCategoryChange(slug)
                                         setIsOpen(false)
                                     }}
+                                    categoryCounts={categoryCounts}
                                 />
 
                                 <div className="border-t border-border/50 pt-6">
