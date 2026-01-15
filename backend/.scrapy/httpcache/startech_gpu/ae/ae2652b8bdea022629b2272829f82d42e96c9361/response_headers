@@ -1,0 +1,14 @@
+Date: Wed, 14 Jan 2026 13:25:11 GMT
+Content-Type: text/html; charset=utf-8
+X-Powered-By: PHP/7.4.33
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: no-store, no-cache, must-revalidate
+Pragma: no-cache
+Vary: Accept-Encoding
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=tUpKs3B1seZGI48eIuh12SD194ypZ5kDZowJyo4cr9rOdX2Bac%2BTHMxi6Pjwjli4l7JP2kSU7T6Hy3NmOFkI8%2BPo2v%2Bm9th%2F8UhcF1wIY2A%3D"}]}
+Server: cloudflare
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Cf-Cache-Status: DYNAMIC
+Content-Encoding: gzip
+Cf-Ray: 9bdd753b29518620-CGP
+Alt-Svc: h3=":443"; ma=86400

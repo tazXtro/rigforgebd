@@ -1,0 +1,24 @@
+Date: Wed, 14 Jan 2026 13:16:15 GMT
+Content-Type: text/html; charset=utf-8
+Server: cloudflare
+Location: https://www.techlandbd.com/pc-components/graphics-card
+X-Content-Type-Options: nosniff
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-Frame-Options: SAMEORIGIN
+X-Xss-Protection: 1; mode=block
+X-Xss-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Referrer-Policy: strict-origin-when-cross-origin
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()
+Set-Cookie: XSRF-TOKEN=eyJpdiI6ImNBRVNhbDdIT1U1bitPcWtBWEcwMWc9PSIsInZhbHVlIjoiTTRPNG5CaVlUekFsTGJ2MnBvbzJvT3RYWXNmZlUvd2JJa2J2Z1gxbDV1eExKcU9WTmh5L2VHUnhSQ2Y2TVlHSFpkdWFoNzUyeVQ4SXBJd0dtY2d2dW84MXlCK0tYMUk2ZVo4YWJ6NWNXUHJDSGhXN0dka1ZWTXFaR0tRSFlrZ0ciLCJtYWMiOiI1M2VlNTM0OTJkYzJmNDg5N2I2NGI5NDA0M2NhNzkwY2E0M2U0MzUzZGUwYzE2MTdmMzUxNjE2Mzc5NTQ4ZGI4IiwidGFnIjoiIn0%3D; expires=Wed, 14 Jan 2026 15:16:15 GMT; Max-Age=7200; path=/; secure; samesite=lax
+Set-Cookie: tl_ecom_session=eyJpdiI6ImNEVHVZOG94RlM2TnZCWThpVkFpd0E9PSIsInZhbHVlIjoiLzF3N2k0bm5ZWWtxZ00yMERWYlJMa05aYWNhWGoyQjdoWENvbm1LK2VRRXhGWEg2RlB0bWt5RFh1djJlZUVGVzVKblczSDVEK0JpZjFuOVJ5QTBqMFEybWpqdGYya1l0MzRkWjlUd1psbnVWVVc4dzBWaGJDTUFZQnQ0T1R4c0UiLCJtYWMiOiIxOWZmNDllZDNjNzA0OTc5ZjczNjIwOWNiOWM2Yzg1MzYyMmMwNmFhYWIzYjBiNDlmZDA1ZDBjNjJjMmYwNWEyIiwidGFnIjoiIn0%3D; expires=Wed, 14 Jan 2026 15:16:15 GMT; Max-Age=7200; path=/; httponly; samesite=lax
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Cf-Cache-Status: DYNAMIC
+Speculation-Rules: "/cdn-cgi/speculation"
+Server-Timing: cfCacheStatus;desc="DYNAMIC"
+Server-Timing: cfEdge;dur=54,cfOrigin;dur=60
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=1ZRTRO8Nm%2FIKt0FEW3WHGzE0Nf2I9BNhX35xpH41A%2BR0lcplnQaB1GzNl8UCaMVZ9%2BkcT6Xw1exbSCj5RviCbqLh3lOkorV%2FTOKAXU6POw%3D%3D"}]}
+Cf-Ray: 9bdd6824a8ebb5cb-CGP
+Alt-Svc: h3=":443"; ma=86400

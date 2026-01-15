@@ -1,0 +1,17 @@
+Date: Wed, 14 Jan 2026 13:17:35 GMT
+Content-Type: text/html; charset=utf-8
+X-Powered-By: PHP/7.4.33
+Set-Cookie: PHPSESSID=k41re8v55rtuese6osel8rce1a; path=/; HttpOnly
+Set-Cookie: language=en; expires=Fri, 13-Feb-2026 13:17:35 GMT; Max-Age=2592000; path=/; domain=www.startech.com.bd
+Set-Cookie: currency=BDT; expires=Fri, 13-Feb-2026 13:17:35 GMT; Max-Age=2592000; path=/; domain=www.startech.com.bd
+Expires: Thu, 19 Nov 1981 08:52:00 GMT
+Cache-Control: no-store, no-cache, must-revalidate
+Pragma: no-cache
+Vary: Accept-Encoding
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=3OGKVJYG%2FDqD0ciEQYvOeoA8NxoJ12VbyPaA2xhnzAeK6n2TZYDFocPEe9KDySCwihqSyQmt9%2BWbpXjz%2F8QuTfDwdHNh%2BhItBR9XYG2zR%2BE%3D"}]}
+Server: cloudflare
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Cf-Cache-Status: DYNAMIC
+Content-Encoding: gzip
+Cf-Ray: 9bdd6a17dd778620-CGP
+Alt-Svc: h3=":443"; ma=86400

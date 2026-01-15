@@ -1,0 +1,28 @@
+Date: Wed, 14 Jan 2026 13:16:17 GMT
+Content-Type: text/html; charset=UTF-8
+Server: cloudflare
+Vary: Accept-Encoding
+Cache-Control: max-age=0, must-revalidate, no-cache, no-store, private
+Pragma: no-cache
+Expires: Fri, 01 Jan 1990 00:00:00 GMT
+X-Content-Type-Options: nosniff
+X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+X-Frame-Options: SAMEORIGIN
+X-Xss-Protection: 1; mode=block
+X-Xss-Protection: 1; mode=block
+Referrer-Policy: strict-origin-when-cross-origin
+Referrer-Policy: strict-origin-when-cross-origin
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()
+Set-Cookie: XSRF-TOKEN=eyJpdiI6IlFLaSsyZkVrbjdtSWZaK0Mwb0JiRFE9PSIsInZhbHVlIjoiMk5GdFRMbkRrenRQblNJWXdHMlUrc0xqWE1iS1ZYdVJBRE9adGsxMDZMa0JnazYzaG0wNVpydlNwQWwwWm5TNzVRZGVyek1YU1c0KzFmNnhURGsyMEhwcUpncGluY2JqQ2xoVHg3WGF5b2N3KzlSamdDUXFRbXpqbEtwL1FUZjQiLCJtYWMiOiJjMjMxYjVmYWFmOWI0NjBjOTFjN2UxZDNiODQ3NGIxZTU1MWI0YjAzNzEzYjBjYTdkZWJlNmZmYzg4NjE0ZjlmIiwidGFnIjoiIn0%3D; expires=Wed, 14 Jan 2026 15:16:17 GMT; Max-Age=7200; path=/; secure; samesite=lax
+Set-Cookie: tl_ecom_session=eyJpdiI6IjJhbm0vYnB6S3EwVXNTb0Y5ejFBZGc9PSIsInZhbHVlIjoiWjA1NHhlVUw3STJQT2xhNk1IYlF6VmRqNk9YR2VxSUt6SWxyZiszV1dUVm56aGN3QzVTQ3JwdmVmT3JrekRFK29KcHFtRklmOGNZLzVSczlUTDZKR1BmTnBKWGliaHN1Vms2L09jUHZBNXFNTWxqUStiZ2Q2OTB0a0pVUEVkL2oiLCJtYWMiOiI1ZWM0NTIyYzc4OWVlNzJmOGMxZTQ0OGFiMWZkNWI2MTU5NmIxN2U0MzlhYzc0NmMxNjMyMTdmNDkwZmZmZDg3IiwidGFnIjoiIn0%3D; expires=Wed, 14 Jan 2026 15:16:17 GMT; Max-Age=7200; path=/; httponly; samesite=lax
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=JsfDkzRaQtLG15FUvtxuZMzk0c18cfoGpbSQNqCA6s%2FMvrjhtMgOcuriQ2kUNtTqWF5l7ZIIPHVF1pIskHiDThD74ONYtfZbr0xEb32XhA%3D%3D"}]}
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Cf-Cache-Status: DYNAMIC
+Speculation-Rules: "/cdn-cgi/speculation"
+Server-Timing: cfCacheStatus;desc="DYNAMIC"
+Server-Timing: cfEdge;dur=57,cfOrigin;dur=320
+Content-Encoding: gzip
+Cf-Ray: 9bdd682daad6b5cb-CGP
+Alt-Svc: h3=":443"; ma=86400
