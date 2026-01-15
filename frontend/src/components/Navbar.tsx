@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Search, Menu, Cpu, Monitor, Zap, Users, Sun, Moon, X, Home } from "lucide-react"
+import { Search, Menu, Cpu, Monitor, Users, Sun, Moon, X, Home } from "lucide-react"
 import { useTheme } from "next-themes"
 import {
     SignInButton,
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { ProductsMegaMenu, ProductsNavTrigger, MobileProductsAccordion } from "@/components/ProductsMegaMenu"
 
 // Reusable Tubelight Glow Effect Component
 function TubelightGlow({ layoutId }: { layoutId: string }) {
@@ -268,14 +269,26 @@ export default function Navbar() {
     const [isSearchOpen, setIsSearchOpen] = useState(false)
     const [activeAction, setActiveAction] = useState<string | null>(null)
     const [isSheetOpen, setIsSheetOpen] = useState(false)
+    const [isProductsMenuOpen, setIsProductsMenuOpen] = useState(false)
+    const productsButtonRef = useRef<HTMLButtonElement>(null)
 
+    // Navigation links (excluding Products which has its own mega-menu)
     const navLinks = [
         { href: "/", label: "Home", icon: Home },
         { href: "/builder", label: "System Builder", icon: Cpu },
         { href: "/builds", label: "Builds", icon: Monitor },
-        { href: "/products", label: "Products", icon: Zap },
         { href: "/community", label: "Community", icon: Users },
     ]
+
+    const isProductsActive = pathname.startsWith("/products")
+
+    const handleToggleProductsMenu = useCallback(() => {
+        setIsProductsMenuOpen((prev) => !prev)
+    }, [])
+
+    const handleCloseProductsMenu = useCallback(() => {
+        setIsProductsMenuOpen(false)
+    }, [])
 
     // Determine active tab based on current pathname
     const getActiveTab = useCallback(() => {
@@ -305,7 +318,7 @@ export default function Navbar() {
                 </Link>
 
                 {/* Tubelight 1: Main Navigation - Desktop */}
-                <nav className="hidden lg:block" aria-label="Main navigation">
+                <nav className="hidden lg:block relative" aria-label="Main navigation">
                     <div className="flex items-center gap-1 border border-border/30 backdrop-blur-lg py-1 px-1 rounded-full">
                         {navLinks.map((link) => (
                             <NavLink
@@ -317,7 +330,22 @@ export default function Navbar() {
                                 onClick={() => { }}
                             />
                         ))}
+
+                        {/* Products Mega Menu Trigger */}
+                        <ProductsNavTrigger
+                            isActive={isProductsActive}
+                            isMenuOpen={isProductsMenuOpen}
+                            onToggle={handleToggleProductsMenu}
+                            triggerRef={productsButtonRef}
+                        />
                     </div>
+
+                    {/* Products Mega Menu Dropdown */}
+                    <ProductsMegaMenu
+                        isOpen={isProductsMenuOpen}
+                        onClose={handleCloseProductsMenu}
+                        triggerRef={productsButtonRef}
+                    />
                 </nav>
 
                 {/* Tubelight 2: Actions - Desktop */}
@@ -440,6 +468,9 @@ export default function Navbar() {
                                     )
                                 })}
                             </nav>
+
+                            {/* Mobile Products Accordion */}
+                            <MobileProductsAccordion onClose={() => setIsSheetOpen(false)} />
 
                             {/* Mobile Theme Toggle */}
                             <Button
