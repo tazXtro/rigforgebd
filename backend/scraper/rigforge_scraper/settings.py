@@ -59,6 +59,42 @@ REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 # Twisted reactor (for Windows compatibility)
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 
+# ============================================================================
+# PLAYWRIGHT INTEGRATION
+# ============================================================================
+# Download handlers for Playwright support
+DOWNLOAD_HANDLERS = {
+    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+}
+
+# Playwright browser configuration
+PLAYWRIGHT_BROWSER_TYPE = "chromium"  # Options: chromium, firefox, webkit
+PLAYWRIGHT_LAUNCH_OPTIONS = {
+    "headless": True,  # Run in headless mode for production
+    "timeout": 30000,  # 30 second browser launch timeout
+}
+
+# Default navigation timeout
+PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30000  # 30 seconds
+
+# Performance optimization: Block unnecessary resources
+# This significantly improves scraping speed by avoiding downloads of images, fonts, etc.
+PLAYWRIGHT_ABORT_REQUEST = lambda req: req.resource_type in ["image", "stylesheet", "font", "media"]
+
+# Concurrency limits for Playwright
+PLAYWRIGHT_MAX_CONTEXTS = 4  # Maximum concurrent browser contexts
+PLAYWRIGHT_MAX_PAGES_PER_CONTEXT = 1  # One page per context
+
+# Browser context settings
+PLAYWRIGHT_CONTEXTS = {
+    "default": {
+        "viewport": {"width": 1920, "height": 1080},
+        "user_agent": "RigForgeBD Price Comparison Bot (+https://rigforgebd.com)",
+    }
+}
+
+
 # Feed export encoding
 FEED_EXPORT_ENCODING = "utf-8"
 
