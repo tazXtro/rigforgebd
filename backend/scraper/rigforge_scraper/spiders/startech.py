@@ -164,8 +164,10 @@ class StartechSpider(BaseRetailerSpider):
                 price_text = card.css(".new-price::text, .special-price::text").get()
                 price = self.parse_price(price_text)
             
+            # INTENTIONAL: Skip products without valid prices (out of stock, upcoming, etc.)
+            # We only want to display products that users can actually purchase
             if price is None or price <= 0:
-                logger.debug(f"Could not parse price for: {name}")
+                logger.debug(f"Skipping product (no valid price - likely out of stock): {name}")
                 return None
             
             # Extract image URL

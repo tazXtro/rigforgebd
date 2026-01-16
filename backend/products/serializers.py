@@ -16,6 +16,7 @@ class RetailerSerializer(serializers.Serializer):
     slug = serializers.CharField(max_length=100)
     base_url = serializers.URLField()
     is_active = serializers.BooleanField(default=True)
+    product_count = serializers.IntegerField(read_only=True, required=False, default=0)
 
 
 class ProductPriceSerializer(serializers.Serializer):
@@ -31,6 +32,7 @@ class ProductSerializer(serializers.Serializer):
     """Serializer for product listing responses."""
     
     id = serializers.UUIDField(read_only=True)
+    listing_id = serializers.UUIDField(read_only=True, required=False, allow_null=True)  # Unique per retailer listing
     name = serializers.CharField(max_length=500)
     slug = serializers.CharField(max_length=500)
     category = serializers.CharField(max_length=100)
@@ -39,6 +41,9 @@ class ProductSerializer(serializers.Serializer):
     image = serializers.URLField(source="image_url", allow_null=True)
     specs = serializers.JSONField(default=dict)
     retailers = ProductPriceSerializer(many=True, read_only=True)
+    # Retailer availability info (for per-listing display)
+    total_retailers = serializers.IntegerField(read_only=True, required=False, default=1)
+    in_stock_count = serializers.IntegerField(read_only=True, required=False, default=0)
 
 
 class ProductListQuerySerializer(serializers.Serializer):
@@ -47,6 +52,7 @@ class ProductListQuerySerializer(serializers.Serializer):
     category = serializers.CharField(required=False)
     brand = serializers.CharField(required=False)
     search = serializers.CharField(required=False)
+    sort = serializers.CharField(required=False)  # Sort option: newest, name_asc, name_desc, price_asc, price_desc
     min_price = serializers.IntegerField(required=False, min_value=0)
     max_price = serializers.IntegerField(required=False, min_value=0)
     in_stock = serializers.BooleanField(required=False)

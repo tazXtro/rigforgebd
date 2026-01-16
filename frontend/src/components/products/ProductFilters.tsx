@@ -4,6 +4,7 @@ import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, X, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Retailer } from "@/lib/productsApi"
 
 interface FilterSection {
     id: string
@@ -21,6 +22,7 @@ interface ProductFiltersProps {
     }
     onFilterChange: (key: string, value: unknown) => void
     onClearAll: () => void
+    retailers?: Retailer[]  // Dynamic retailers from API
 }
 
 const brandOptions = [
@@ -34,15 +36,6 @@ const brandOptions = [
     { value: "gskill", label: "G.Skill", count: 89 },
     { value: "samsung", label: "Samsung", count: 134 },
     { value: "western-digital", label: "Western Digital", count: 98 },
-]
-
-const retailerOptions = [
-    { value: "startech", label: "Star Tech", count: 456 },
-    { value: "techland", label: "Techland BD", count: 389 },
-    { value: "ryans", label: "Ryans Computers", count: 467 },
-    { value: "ultratech", label: "UltraTech", count: 234 },
-    { value: "skyland", label: "Skyland", count: 178 },
-    { value: "nexus", label: "Nexus Computer", count: 145 },
 ]
 
 function FilterAccordion({
@@ -87,7 +80,13 @@ function FilterAccordion({
     )
 }
 
-export function ProductFilters({ filters, onFilterChange, onClearAll }: ProductFiltersProps) {
+export function ProductFilters({ filters, onFilterChange, onClearAll, retailers = [] }: ProductFiltersProps) {
+    // Convert retailers to option format for rendering
+    const retailerOptions = retailers.map(r => ({
+        value: r.slug,
+        label: r.name,
+        count: r.product_count,
+    }))
     const [openSections, setOpenSections] = useState<Record<string, boolean>>({
         price: true,
         brands: true,
@@ -294,7 +293,7 @@ export function ProductFilters({ filters, onFilterChange, onClearAll }: ProductF
                                 key={retailer}
                                 className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full"
                             >
-                                {retailerOptions.find((r) => r.value === retailer)?.label}
+                                {retailers.find((r) => r.slug === retailer)?.name || retailer}
                                 <button onClick={() => handleRetailerToggle(retailer)}>
                                     <X className="w-3 h-3" />
                                 </button>

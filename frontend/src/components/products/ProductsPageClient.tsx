@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useCallback, useEffect } from "react"
+import { useState, useMemo, useCallback, useEffect, useTransition } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import {
@@ -25,10 +25,15 @@ import {
     sortProducts,
 } from "@/components/products"
 import { Product } from "@/components/products/ProductCard"
-import { fetchProducts, fetchCategoryCounts, PaginationInfo } from "@/lib/productsApi"
+import { fetchProducts, fetchCategoryCounts, fetchRetailers, PaginationInfo, Retailer } from "@/lib/productsApi"
 
 interface ProductsPageClientProps {
     initialCategory?: string
+    // Server-side fetched initial data (Next.js cached)
+    initialProducts?: Product[]
+    initialPagination?: PaginationInfo | null
+    initialCategoryCounts?: Record<string, number>
+    initialRetailers?: Retailer[]
 }
 
 const sortOptions = [
@@ -41,15 +46,23 @@ const sortOptions = [
 
 const PAGE_SIZE = 24 // Products per page
 
-export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientProps) {
+export function ProductsPageClient({
+    initialCategory = "",
+    initialProducts = [],
+    initialPagination = null,
+    initialCategoryCounts = {},
+    initialRetailers = [],
+}: ProductsPageClientProps) {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const [isPending, startTransition] = useTransition()
 
-    // Products state
-    const [products, setProducts] = useState<Product[]>([])
-    const [pagination, setPagination] = useState<PaginationInfo | null>(null)
-    const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({})
-    const [isLoading, setIsLoading] = useState(true)
+    // Products state - initialize with server-provided data
+    const [products, setProducts] = useState<Product[]>(initialProducts)
+    const [pagination, setPagination] = useState<PaginationInfo | null>(initialPagination)
+    const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(initialCategoryCounts)
+    const [retailers, setRetailers] = useState<Retailer[]>(initialRetailers)
+    const [isLoading, setIsLoading] = useState(false) // Start with false since we have initial data
     const [error, setError] = useState<string | null>(null)
 
     // Pagination state from URL
@@ -57,6 +70,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
 
     // Filter state
     const [search, setSearch] = useState(searchParams.get("q") || "")
+    const [debouncedSearch, setDebouncedSearch] = useState(search)
     const [category, setCategory] = useState(initialCategory)
     const [sortBy, setSortBy] = useState(searchParams.get("sort") || "newest")
     const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
@@ -69,23 +83,49 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
         inStock: false,
     })
 
-    // Fetch products with pagination
+    // Track if we need client-side fetch (after initial server render)
+    const [needsClientFetch, setNeedsClientFetch] = useState(false)
+
+    // Debounce search input to avoid too many API calls
     useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(search)
+        }, 300) // 300ms debounce
+        return () => clearTimeout(timer)
+    }, [search])
+
+    // Only fetch on client when user interacts (category change, search, pagination)
+    // Initial data comes from server with Next.js caching
+    useEffect(() => {
+        // Skip initial render - we already have server data
+        if (!needsClientFetch) {
+            return
+        }
+
         async function loadData() {
             setIsLoading(true)
             setError(null)
             try {
-                const [productsResponse, countsData] = await Promise.all([
-                    fetchProducts({
-                        category: category || undefined,
-                        page: currentPage,
-                        page_size: PAGE_SIZE,
-                    }),
-                    fetchCategoryCounts()
-                ])
+                // Only fetch products - category counts and retailers are stable
+                const productsResponse = await fetchProducts({
+                    category: category || undefined,
+                    search: debouncedSearch || undefined,
+                    sort: sortBy || undefined,
+                    page: currentPage,
+                    page_size: PAGE_SIZE,
+                })
                 setProducts(productsResponse.products)
                 setPagination(productsResponse.pagination)
-                setCategoryCounts(countsData)
+
+                // Only refetch counts/retailers if category changed
+                if (category !== initialCategory) {
+                    const [countsData, retailersData] = await Promise.all([
+                        fetchCategoryCounts(),
+                        fetchRetailers(),
+                    ])
+                    setCategoryCounts(countsData)
+                    setRetailers(retailersData)
+                }
             } catch (err) {
                 console.error("Failed to fetch data:", err)
                 setError("Failed to load products. Please try again later.")
@@ -94,12 +134,17 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
             }
         }
         loadData()
-    }, [category, currentPage])
+    }, [category, currentPage, debouncedSearch, sortBy, needsClientFetch, initialCategory])
 
-    // Client-side filtering for search/brand/price (applied to current page)
+    // Mark that future changes need client fetch
+    useEffect(() => {
+        setNeedsClientFetch(true)
+    }, [category, debouncedSearch, sortBy, currentPage])
+
+    // Client-side filtering for brand/retailer/price (search and sort are server-side)
     const filteredProducts = useMemo(() => {
-        const filtered = filterProducts(products, {
-            search,
+        return filterProducts(products, {
+            search: "", // Search is handled server-side now
             category: "", // Category already filtered server-side
             brands: filters.brands,
             retailers: filters.retailers,
@@ -107,20 +152,37 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
             maxPrice: filters.maxPrice,
             inStock: filters.inStock,
         })
-        return sortProducts(filtered, sortBy)
-    }, [products, search, filters, sortBy])
+        // Note: Sorting is now handled server-side
+    }, [products, filters])
 
     // Pagination handlers
     const handlePageChange = useCallback((newPage: number) => {
         const params = new URLSearchParams(searchParams.toString())
         params.set("page", newPage.toString())
-        
+
         const basePath = category ? `/products/${category}` : "/products"
         router.push(`${basePath}?${params.toString()}`)
-        
+
         // Scroll to top smoothly
         window.scrollTo({ top: 0, behavior: "smooth" })
     }, [router, searchParams, category])
+
+    // Handle search change - resets to page 1
+    const handleSearchChange = useCallback((value: string) => {
+        setSearch(value)
+        // Reset to page 1 when search changes (handled by URL update)
+        if (currentPage !== 1) {
+            const params = new URLSearchParams(searchParams.toString())
+            params.delete("page")
+            if (value) {
+                params.set("q", value)
+            } else {
+                params.delete("q")
+            }
+            const basePath = category ? `/products/${category}` : "/products"
+            router.push(`${basePath}${params.toString() ? `?${params.toString()}` : ""}`)
+        }
+    }, [router, searchParams, category, currentPage])
 
     // Handlers
     const handleFilterChange = useCallback((key: string, value: unknown) => {
@@ -136,7 +198,10 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
             inStock: false,
         })
         setSearch("")
-    }, [])
+        // Reset to page 1
+        const basePath = category ? `/products/${category}` : "/products"
+        router.push(basePath)
+    }, [router, category])
 
     const handleCategoryChange = useCallback((slug: string) => {
         setCategory(slug)
@@ -188,7 +253,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
                     <p className="text-muted-foreground flex items-center gap-2">
                         <Package className="w-4 h-4" />
                         <span>
-                            {pagination 
+                            {pagination
                                 ? `${pagination.total_count} products found`
                                 : `${filteredProducts.length} products found`
                             }
@@ -200,7 +265,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
                 <div className="flex flex-col sm:flex-row gap-4">
                     <SearchBar
                         value={search}
-                        onChange={setSearch}
+                        onChange={handleSearchChange}
                         placeholder="Search products, brands, categories..."
                         className="flex-1"
                     />
@@ -215,6 +280,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
                             onClearAll={handleClearFilters}
                             resultCount={filteredProducts.length}
                             categoryCounts={categoryCounts}
+                            retailers={retailers}
                         />
 
                         {/* Sort Dropdown */}
@@ -310,6 +376,7 @@ export function ProductsPageClient({ initialCategory = "" }: ProductsPageClientP
                                 filters={filters}
                                 onFilterChange={handleFilterChange}
                                 onClearAll={handleClearFilters}
+                                retailers={retailers}
                             />
                         </div>
                     </div>

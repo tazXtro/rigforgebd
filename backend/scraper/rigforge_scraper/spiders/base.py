@@ -70,6 +70,66 @@ class BaseRetailerSpider(scrapy.Spider):
         "Transcend", "Lexar", "PNY", "Addlink", "Netac", "Hikvision",
     ]
     
+    # Playwright configuration (override in subclass for JS-heavy sites)
+    use_playwright = False
+    playwright_config = None  # Dict with wait_until, timeout, etc.
+    
+    def start_requests(self):
+        """
+        Generate initial requests, applying Playwright if configured.
+        
+        Subclasses can override if they need custom start_requests logic.
+        """
+        for url in self.start_urls:
+            yield self.make_request(url, callback=self.parse)
+    
+    def make_request(self, url, callback, playwright=None, **kwargs):
+        """
+        Create a request with optional Playwright rendering.
+        
+        This is the recommended way to create requests in retailer spiders,
+        as it automatically handles Playwright configuration based on the
+        spider's use_playwright setting.
+        
+        Args:
+            url: Target URL
+            callback: Parse callback function
+            playwright: Override Playwright usage (True/False/None=use default)
+            **kwargs: Additional request arguments (meta, headers, etc.)
+        
+        Returns:
+            scrapy.Request with appropriate meta for Playwright if needed
+            
+        Example:
+            # Use spider's default setting
+            yield self.make_request(url, self.parse_detail)
+            
+            # Force Playwright for specific request
+            yield self.make_request(url, self.parse_detail, playwright=True)
+            
+            # Disable Playwright for specific request
+            yield self.make_request(url, self.parse_detail, playwright=False)
+        """
+        use_pw = playwright if playwright is not None else self.use_playwright
+        
+        meta = kwargs.pop("meta", {})
+        
+        if use_pw:
+            meta["playwright"] = True
+            meta["playwright_include_page"] = False
+            
+            # Apply playwright config if available
+            if self.playwright_config:
+                page_goto_kwargs = {}
+                if "wait_until" in self.playwright_config:
+                    page_goto_kwargs["wait_until"] = self.playwright_config["wait_until"]
+                if "timeout" in self.playwright_config:
+                    page_goto_kwargs["timeout"] = self.playwright_config["timeout"]
+                if page_goto_kwargs:
+                    meta["playwright_page_goto_kwargs"] = page_goto_kwargs
+        
+        return scrapy.Request(url, callback=callback, meta=meta, **kwargs)
+    
     def parse_price(self, price_text) -> Optional[float]:
         """
         Parse price from text, handling BDT currency format.

@@ -87,3 +87,37 @@ CATEGORY_MAPPINGS = {
     "monitor": "Monitors",
     "laptop-notebook": "Laptops",
 }
+
+# =============================================================================
+# Playwright Configuration (for JS-heavy sites like Techland)
+# =============================================================================
+
+# Download handlers for Playwright
+# These replace Scrapy's default handlers to enable Playwright rendering
+DOWNLOAD_HANDLERS = {
+    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+}
+
+# Browser type: chromium, firefox, or webkit
+PLAYWRIGHT_BROWSER_TYPE = "chromium"
+
+# Browser launch options
+PLAYWRIGHT_LAUNCH_OPTIONS = {
+    "headless": True,
+}
+
+# Default browser context options
+PLAYWRIGHT_CONTEXTS = {
+    "default": {
+        "viewport": {"width": 1920, "height": 1080},
+        "ignore_https_errors": True,
+    },
+}
+
+# Default navigation timeout (in milliseconds)
+PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT = 30000
+
+# Maximum number of pages per browser context
+PLAYWRIGHT_MAX_PAGES_PER_CONTEXT = 4
+

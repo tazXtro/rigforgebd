@@ -1,6 +1,14 @@
 import { Suspense } from "react"
 import { ProductsPageClient } from "@/components/products/ProductsPageClient"
 import ProductsLoading from "../loading"
+import {
+    fetchProductsServer,
+    fetchCategoryCountsServer,
+    fetchRetailersServer,
+} from "@/lib/productsApi.server"
+
+// Enable ISR - revalidate every 30 seconds
+export const revalidate = 30
 
 // Generate metadata for category pages
 export async function generateMetadata({
@@ -51,16 +59,47 @@ export function generateStaticParams() {
     ]
 }
 
+interface CategoryPageProps {
+    params: Promise<{ category: string }>
+    searchParams: Promise<{
+        page?: string
+        sort?: string
+        q?: string
+    }>
+}
+
 export default async function CategoryPage({
     params,
-}: {
-    params: Promise<{ category: string }>
-}) {
+    searchParams,
+}: CategoryPageProps) {
     const { category } = await params
+    const search = await searchParams
+    const page = parseInt(search.page || "1", 10)
+    const sort = search.sort || "newest"
+    const query = search.q || ""
+
+    // Fetch initial data on the server with Next.js caching
+    const [productsData, categoryCounts, retailers] = await Promise.all([
+        fetchProductsServer({
+            category,
+            page,
+            page_size: 24,
+            sort,
+            search: query || undefined,
+        }),
+        fetchCategoryCountsServer(),
+        fetchRetailersServer(),
+    ])
 
     return (
         <Suspense fallback={<ProductsLoading />}>
-            <ProductsPageClient initialCategory={category} />
+            <ProductsPageClient
+                initialCategory={category}
+                initialProducts={productsData.products}
+                initialPagination={productsData.pagination}
+                initialCategoryCounts={categoryCounts}
+                initialRetailers={retailers}
+            />
         </Suspense>
     )
 }

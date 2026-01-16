@@ -55,7 +55,7 @@ export function CategoryNav({
     activeCategory = "",
     onCategoryChange,
     categoryCounts = {},
-    defaultExpanded = true
+    defaultExpanded = false
 }: CategoryNavProps) {
     const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 

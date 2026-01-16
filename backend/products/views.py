@@ -53,12 +53,18 @@ class ProductListView(APIView):
         page = params.get("page", 1)
         page_size = params.get("page_size", 24)
         category = params.get("category")
+        search = params.get("search")
+        brand = params.get("brand")
+        sort = params.get("sort")
         
-        # Use paginated method for better performance
+        # Use paginated method with server-side filtering and sorting
         result = product_service.get_products_paginated(
             page=page,
             page_size=page_size,
             category_slug=category,
+            search=search,
+            brand=brand,
+            sort_by=sort,
         )
         
         # Serialize products

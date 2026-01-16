@@ -21,6 +21,7 @@ export interface ProductRetailer {
 
 export interface Product {
     id: string
+    listing_id?: string  // Unique ID for each retailer listing (used for React keys)
     name: string
     slug: string
     category: string
@@ -29,6 +30,9 @@ export interface Product {
     retailers: ProductRetailer[]
     brand: string
     specs?: Record<string, string>
+    // Retailer availability info (for per-listing display)
+    total_retailers?: number  // How many stores carry this product
+    in_stock_count?: number   // How many stores have it in stock
 }
 
 interface ProductCardProps {
@@ -45,7 +49,9 @@ export function ProductCard({ product, viewMode = "grid" }: ProductCardProps) {
     const lowestPrice = Math.min(...prices)
     const highestPrice = Math.max(...prices)
     const lowestRetailer = product.retailers.find(r => r.price === lowestPrice)
-    const inStockCount = product.retailers.filter(r => r.inStock).length
+    // Use total counts from backend if available (for per-listing display)
+    const totalRetailers = product.total_retailers || product.retailers.length
+    const inStockCount = product.in_stock_count ?? product.retailers.filter(r => r.inStock).length
     const hasMultiplePrices = prices.length > 1 && lowestPrice !== highestPrice
 
     // Format price with Taka symbol
@@ -106,7 +112,7 @@ export function ProductCard({ product, viewMode = "grid" }: ProductCardProps) {
 
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Store className="w-4 h-4" />
-                            <span>{product.retailers.length} retailers</span>
+                            <span>{totalRetailers} retailer{totalRetailers > 1 ? "s" : ""}</span>
                         </div>
 
                         <div className="flex items-center gap-2 text-sm">
@@ -204,7 +210,7 @@ export function ProductCard({ product, viewMode = "grid" }: ProductCardProps) {
 
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Store className="w-3 h-3" />
-                        <span>{product.retailers.length}</span>
+                        <span>{totalRetailers}</span>
                     </div>
                 </div>
 

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { SlidersHorizontal, X } from "lucide-react"
 import { ProductFilters } from "./ProductFilters"
 import { CategoryNav } from "./CategoryNav"
+import { Retailer } from "@/lib/productsApi"
 
 interface MobileFiltersProps {
     filters: {
@@ -20,6 +21,7 @@ interface MobileFiltersProps {
     onClearAll: () => void
     resultCount: number
     categoryCounts?: Record<string, number>
+    retailers?: Retailer[]  // Dynamic retailers from API
 }
 
 export function MobileFilters({
@@ -30,6 +32,7 @@ export function MobileFilters({
     onClearAll,
     resultCount,
     categoryCounts = {},
+    retailers = [],
 }: MobileFiltersProps) {
     const [isOpen, setIsOpen] = useState(false)
 
@@ -105,6 +108,7 @@ export function MobileFilters({
                                         filters={filters}
                                         onFilterChange={onFilterChange}
                                         onClearAll={onClearAll}
+                                        retailers={retailers}
                                     />
                                 </div>
                             </div>

@@ -54,7 +54,7 @@ export function ProductGrid({ products, viewMode = "grid" }: ProductGridProps) {
                 className="flex flex-col gap-4"
             >
                 {products.map((product) => (
-                    <ProductCard key={product.id} product={product} viewMode="list" />
+                    <ProductCard key={product.listing_id || product.id} product={product} viewMode="list" />
                 ))}
             </motion.div>
         )
@@ -68,7 +68,7 @@ export function ProductGrid({ products, viewMode = "grid" }: ProductGridProps) {
             className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4"
         >
             {products.map((product) => (
-                <ProductCard key={product.id} product={product} viewMode="grid" />
+                <ProductCard key={product.listing_id || product.id} product={product} viewMode="grid" />
             ))}
         </motion.div>
     )

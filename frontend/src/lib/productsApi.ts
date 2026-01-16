@@ -5,6 +5,7 @@ export interface ProductsQueryParams {
     category?: string;
     search?: string;
     brand?: string;
+    sort?: string;  // Sort option: newest, name_asc, name_desc, price_asc, price_desc
     page?: number;
     page_size?: number;
 }
@@ -53,3 +54,22 @@ export async function fetchCategoryCounts(): Promise<Record<string, number>> {
     return response.data;
 }
 
+/**
+ * Retailer data with product count
+ */
+export interface Retailer {
+    id: string;
+    name: string;
+    slug: string;
+    base_url: string;
+    is_active: boolean;
+    product_count: number;
+}
+
+/**
+ * Fetch all retailers with their product listing counts
+ */
+export async function fetchRetailers(): Promise<Retailer[]> {
+    const response = await api.get<Retailer[]>('/products/retailers/');
+    return response.data;
+}

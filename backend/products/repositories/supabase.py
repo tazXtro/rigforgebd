@@ -11,7 +11,9 @@ Follows clean architecture principles:
 """
 
 import logging
-from typing import Optional, List
+import time
+from functools import wraps
+from typing import Optional, List, Callable, TypeVar
 from datetime import datetime, timezone
 
 from products.repositories.exceptions import (
@@ -25,6 +27,116 @@ from products.repositories.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
+
+
+def retry_on_socket_error(
+    max_retries: int = 3,
+    base_delay: float = 0.1,
+    max_delay: float = 2.0,
+) -> Callable:
+    """
+    Decorator to retry operations on transient socket errors.
+    
+    Handles WinError 10035 and similar non-blocking socket errors
+    that occur under high load with rapid requests.
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Initial delay in seconds (doubles each retry)
+        max_delay: Maximum delay cap in seconds
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:
+            last_exception = None
+            delay = base_delay
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_str = str(e)
+                    # Check for transient socket errors (Windows non-blocking socket)
+                    is_transient = (
+                        "10035" in error_str or  # WSAEWOULDBLOCK
+                        "10053" in error_str or  # WSAECONNABORTED
+                        "10054" in error_str or  # WSAECONNRESET
+                        "timed out" in error_str.lower() or
+                        "connection" in error_str.lower() and "reset" in error_str.lower()
+                    )
+                    
+                    if is_transient and attempt < max_retries:
+                        logger.warning(
+                            f"Transient error in {func.__name__} (attempt {attempt + 1}/{max_retries + 1}): {e}. "
+                            f"Retrying in {delay:.2f}s..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * 2, max_delay)
+                        last_exception = e
+                    else:
+                        raise
+            
+            # Should not reach here, but just in case
+            if last_exception:
+                raise last_exception
+        return wrapper
+    return decorator
+
+
+class SimpleCache:
+    """
+    Simple in-memory cache with TTL for reducing repeated queries.
+    
+    Used for data that doesn't change frequently (like category counts)
+    to reduce load on Supabase during rapid page refreshes.
+    """
+    
+    def __init__(self):
+        self._cache = {}
+        self._timestamps = {}
+    
+    def get(self, key: str, ttl_seconds: float = 30.0):
+        """
+        Get cached value if not expired.
+        
+        Args:
+            key: Cache key
+            ttl_seconds: Time-to-live in seconds
+            
+        Returns:
+            Cached value or None if expired/missing
+        """
+        if key not in self._cache:
+            return None
+        
+        elapsed = time.time() - self._timestamps.get(key, 0)
+        if elapsed > ttl_seconds:
+            # Expired
+            del self._cache[key]
+            del self._timestamps[key]
+            return None
+        
+        return self._cache[key]
+    
+    def set(self, key: str, value):
+        """Store value in cache with current timestamp."""
+        self._cache[key] = value
+        self._timestamps[key] = time.time()
+    
+    def clear(self, key: str = None):
+        """Clear specific key or entire cache."""
+        if key:
+            self._cache.pop(key, None)
+            self._timestamps.pop(key, None)
+        else:
+            self._cache.clear()
+            self._timestamps.clear()
+
+
+# Global cache instance
+_cache = SimpleCache()
 
 
 class ProductRepository:
@@ -154,14 +266,18 @@ class ProductRepository:
                 original_error=e
             ) from e
     
+    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_paginated(
         self,
         page: int = 1,
         page_size: int = 24,
         category_slug: Optional[str] = None,
+        search: Optional[str] = None,
+        brand: Optional[str] = None,
+        sort_by: Optional[str] = None,
     ) -> dict:
         """
-        Retrieve products with pagination.
+        Retrieve products with pagination, filtering, and sorting.
         
         Uses offset-based pagination which works well with Supabase.
         Returns both the products and pagination metadata.
@@ -170,6 +286,9 @@ class ProductRepository:
             page: Page number (1-indexed)
             page_size: Number of products per page
             category_slug: Optional category filter
+            search: Optional search term (searches name and brand)
+            brand: Optional brand filter
+            sort_by: Sort option (newest, name_asc, name_desc)
             
         Returns:
             Dict with 'products' list and 'pagination' metadata
@@ -180,8 +299,15 @@ class ProductRepository:
             
             # Build base query for counting
             count_query = self.client.table(self.TABLE_NAME).select("*", count="exact")
+            
+            # Apply filters to count query
             if category_slug:
                 count_query = count_query.eq("category_slug", category_slug)
+            if brand:
+                count_query = count_query.ilike("brand", f"%{brand}%")
+            if search:
+                # Search in name using case-insensitive pattern matching
+                count_query = count_query.or_(f"name.ilike.%{search}%,brand.ilike.%{search}%")
             
             # Get total count
             count_response = count_query.execute()
@@ -192,12 +318,27 @@ class ProductRepository:
                 self.client
                 .table(self.TABLE_NAME)
                 .select("*")
-                .order("created_at", desc=True)  # Newest first
-                .range(offset, offset + page_size - 1)
             )
             
+            # Apply sorting based on sort_by parameter
+            if sort_by == "name_asc":
+                query = query.order("name", desc=False)
+            elif sort_by == "name_desc":
+                query = query.order("name", desc=True)
+            else:
+                # Default: newest first
+                query = query.order("created_at", desc=True)
+            
+            # Apply pagination
+            query = query.range(offset, offset + page_size - 1)
+            
+            # Apply same filters to data query
             if category_slug:
                 query = query.eq("category_slug", category_slug)
+            if brand:
+                query = query.ilike("brand", f"%{brand}%")
+            if search:
+                query = query.or_(f"name.ilike.%{search}%,brand.ilike.%{search}%")
             
             response = query.execute()
             products = response.data if response and response.data else []
@@ -224,36 +365,80 @@ class ProductRepository:
                 original_error=e
             ) from e
     
-    def get_category_counts(self) -> dict:
+    @retry_on_socket_error(max_retries=3, base_delay=0.1)
+    def get_category_counts(self, use_cache: bool = True, cache_ttl: float = 30.0) -> dict:
         """
-        Get count of products per category.
+        Get count of product listings per category.
+        
+        Counts are based on product_prices table (one per retailer listing),
+        matching the display model where each retailer listing is a separate card.
+        
+        Uses caching to reduce load during rapid page refreshes.
+        
+        Args:
+            use_cache: Whether to use cached results (default True)
+            cache_ttl: Cache time-to-live in seconds (default 30)
         
         Returns:
-            Dict mapping category_slug to product count
+            Dict mapping category_slug to listing count.
+            Empty string key ("") contains total listings count.
         """
+        cache_key = "category_counts"
+        
+        # Check cache first
+        if use_cache:
+            cached = _cache.get(cache_key, cache_ttl)
+            if cached is not None:
+                logger.debug("Returning cached category counts")
+                return cached
+        
         try:
-            # Fetch all products and count by category_slug
-            response = (
+            # Get all products with their category slugs
+            products_response = (
                 self.client
                 .table(self.TABLE_NAME)
-                .select("category_slug")
+                .select("id, category_slug")
                 .execute()
             )
             
-            if not response or not response.data:
+            if not products_response or not products_response.data:
                 return {}
             
-            # Count products per category
+            # Build a map of product_id -> category_slug
+            product_categories = {
+                p["id"]: p.get("category_slug", "")
+                for p in products_response.data
+            }
+            
+            # Get all price listings
+            prices_response = (
+                self.client
+                .table("product_prices")
+                .select("product_id")
+                .execute()
+            )
+            
+            if not prices_response or not prices_response.data:
+                return {"": 0}
+            
+            # Count listings per category
             counts = {}
-            for product in response.data:
-                slug = product.get("category_slug", "")
-                if slug:
-                    counts[slug] = counts.get(slug, 0) + 1
+            total = 0
+            for price in prices_response.data:
+                product_id = price.get("product_id")
+                category_slug = product_categories.get(product_id, "")
+                if category_slug:
+                    counts[category_slug] = counts.get(category_slug, 0) + 1
+                total += 1
             
             # Add total count
-            counts[""] = len(response.data)
+            counts[""] = total
+            
+            # Cache the result
+            _cache.set(cache_key, counts)
             
             return counts
+            
             
         except Exception as e:
             logger.error(f"Failed to get category counts: {e}")
@@ -261,6 +446,10 @@ class ProductRepository:
                 "Failed to get category counts",
                 original_error=e
             ) from e
+    
+    def invalidate_category_counts_cache(self):
+        """Invalidate the category counts cache (call after product changes)."""
+        _cache.clear("category_counts")
     
     def create(self, product_data: dict) -> dict:
         """
@@ -424,6 +613,64 @@ class RetailerRepository:
                 "Failed to fetch retailers",
                 original_error=e
             ) from e
+    
+    @retry_on_socket_error(max_retries=3, base_delay=0.1)
+    def get_all_with_counts(self, active_only: bool = True) -> List[dict]:
+        """
+        Retrieve all retailers with their product listing counts.
+        
+        Counts are based on entries in the product_prices table,
+        representing how many product listings each retailer has.
+        
+        Args:
+            active_only: If True, only return active retailers
+            
+        Returns:
+            List of retailer dicts with 'product_count' field
+        """
+        try:
+            # Get all retailers
+            query = self.client.table(self.TABLE_NAME).select("*")
+            if active_only:
+                query = query.eq("is_active", True)
+            retailer_response = query.execute()
+            retailers = retailer_response.data if retailer_response and retailer_response.data else []
+            
+            if not retailers:
+                return []
+            
+            # Get counts from product_prices for each retailer
+            # Supabase doesn't support GROUP BY easily, so we fetch and count
+            prices_response = (
+                self.client
+                .table("product_prices")
+                .select("retailer_id")
+                .execute()
+            )
+            prices = prices_response.data if prices_response and prices_response.data else []
+            
+            # Count products per retailer
+            counts = {}
+            for price in prices:
+                rid = price.get("retailer_id")
+                if rid:
+                    counts[rid] = counts.get(rid, 0) + 1
+            
+            # Attach counts to retailers
+            for retailer in retailers:
+                retailer["product_count"] = counts.get(retailer["id"], 0)
+            
+            # Sort by product_count descending (most products first)
+            retailers.sort(key=lambda r: r.get("product_count", 0), reverse=True)
+            
+            return retailers
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch retailers with counts: {e}")
+            raise ProductRepositoryError(
+                "Failed to fetch retailers with counts",
+                original_error=e
+            ) from e
 
 
 class PriceRepository:
@@ -479,6 +726,7 @@ class PriceRepository:
                 original_error=e
             ) from e
     
+    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_by_product_ids(self, product_ids: List[str]) -> List[dict]:
         """
         Retrieve all price records for multiple products in a single query.
