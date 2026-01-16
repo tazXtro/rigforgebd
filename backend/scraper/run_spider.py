@@ -80,6 +80,12 @@ def run_spider(spider_name, category=None, limit=None, save_to_db=False, output=
     # Get Scrapy settings
     settings = get_project_settings()
     
+    # Disable Playwright for spiders that don't need it
+    # This prevents unnecessary browser launches and saves resources
+    if not uses_playwright:
+        # Remove Playwright download handlers, use default Scrapy handlers
+        settings["DOWNLOAD_HANDLERS"] = {}
+    
     # Enable database pipeline if --save flag is used
     if save_to_db:
         current_pipelines = dict(settings.get("ITEM_PIPELINES", {}))

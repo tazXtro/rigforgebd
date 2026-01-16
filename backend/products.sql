@@ -28,7 +28,8 @@ INSERT INTO retailers (name, slug, base_url) VALUES
     ('Ryans Computers', 'ryans', 'https://www.ryanscomputers.com'),
     ('UltraTech', 'ultratech', 'https://www.ultratechbd.com'),
     ('Skyland', 'skyland', 'https://www.skyland.com.bd'),
-    ('Nexus Computer', 'nexus', 'https://www.nexuscomputerbd.com')
+    ('Nexus Computer', 'nexus', 'https://www.nexuscomputerbd.com'),
+    ('Potaka IT', 'potakait', 'https://potakait.com')
 ON CONFLICT (slug) DO NOTHING;
 
 -- =====================================================

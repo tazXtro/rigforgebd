@@ -47,6 +47,27 @@ RETAILERS: Dict[str, Dict[str, Any]] = {
             "timeout": 30000,
         },
     },
+    "skyland": {
+        "enabled": True,
+        "use_playwright": False,
+        "spider_class": "rigforge_scraper.spiders.skyland.SkylandSpider",
+        "display_name": "Skyland Computer",
+        "playwright_config": None,
+    },
+    "ultratech": {
+        "enabled": True,
+        "use_playwright": False,
+        "spider_class": "rigforge_scraper.spiders.ultratech.UltratechSpider",
+        "display_name": "Ultra Technology",
+        "playwright_config": None,
+    },
+    "potakait": {
+        "enabled": True,
+        "use_playwright": False,
+        "spider_class": "rigforge_scraper.spiders.potakait.PotakaitSpider",
+        "display_name": "Potaka IT",
+        "playwright_config": None,
+    },
 }
 
 
