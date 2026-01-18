@@ -1,5 +1,6 @@
 import { Metadata } from "next"
 import { BuilderProvider, PCBuilder } from "@/components/builder"
+import Navbar from "@/components/Navbar"
 
 export const metadata: Metadata = {
     title: "System Builder | RigForgeBD",
@@ -10,7 +11,8 @@ export const metadata: Metadata = {
 export default function BuilderPage() {
     return (
         <BuilderProvider>
-            <main className="min-h-screen bg-background flex items-center justify-center">
+            <Navbar />
+            <main className="min-h-screen bg-background">
                 <PCBuilder />
             </main>
         </BuilderProvider>
