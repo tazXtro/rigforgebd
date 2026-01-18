@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timezone
 
 from itemadapter import ItemAdapter
+from scrapy.exceptions import DropItem
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +24,16 @@ class CleaningPipeline:
     def process_item(self, item, spider):
         adapter = ItemAdapter(item)
         
-        # Clean product name
+        # Clean product name (light cleanup - spiders already normalize)
         name = adapter.get("name", "")
         if name:
             adapter["name"] = self._clean_text(name)
         
-        # Clean and parse price
+        # Ensure price is a float (spiders already parse, this is a safety check)
         price = adapter.get("price")
-        if price is not None:
-            adapter["price"] = self._parse_price(price)
+        if price is not None and not isinstance(price, (int, float)):
+            logger.warning(f"Price should be numeric, got: {type(price).__name__}")
+            adapter["price"] = 0.0
         
         # Ensure URL is absolute
         url = adapter.get("product_url", "")
@@ -54,34 +56,8 @@ class CleaningPipeline:
         text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
         return text.strip()
     
-    def _parse_price(self, price) -> float:
-        """
-        Parse price from various formats.
-        
-        Handles:
-        - "৳ 75,000"
-        - "75000"
-        - "75,000.00"
-        - 75000
-        """
-        if isinstance(price, (int, float)):
-            return float(price)
-        
-        if isinstance(price, str):
-            # Remove currency symbols and common prefixes
-            price = price.replace("৳", "").replace("BDT", "").replace("Tk", "")
-            # Remove commas and whitespace
-            price = price.replace(",", "").strip()
-            # Extract number
-            match = re.search(r'[\d.]+', price)
-            if match:
-                try:
-                    return float(match.group())
-                except ValueError:
-                    pass
-        
-        logger.warning(f"Could not parse price: {price}")
-        return 0.0
+    # Note: _parse_price removed - spiders handle price parsing via BaseRetailerSpider.parse_price()
+    # The pipeline now only validates that prices are numeric (see process_item above)
 
 
 class ValidationPipeline:
@@ -126,9 +102,7 @@ class ValidationPipeline:
         return item
 
 
-class DropItem(Exception):
-    """Exception to drop an item from the pipeline."""
-    pass
+# DropItem is now imported from scrapy.exceptions (line 12)
 
 
 class SupabaseIngestionPipeline:

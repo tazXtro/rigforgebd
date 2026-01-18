@@ -5,6 +5,7 @@ Uses Playwright for JavaScript rendering as the site relies heavily on JS.
 """
 
 import logging
+import traceback
 from urllib.parse import urljoin
 
 import scrapy
@@ -53,6 +54,10 @@ class TechlandSpider(BaseRetailerSpider):
         "casing": "https://www.techlandbd.com/pc-components/casing",
         "cooling": "https://www.techlandbd.com/pc-components/cooler",
     }
+    
+    # Maximum pages to scrape per category (prevents excessive Playwright click chains)
+    # Each page requires clicking "Next" from page 1, so page 10 = 9 clicks + waits
+    MAX_PAGES = 10
     
     # Custom settings for Playwright spider
     custom_settings = {
@@ -242,7 +247,7 @@ class TechlandSpider(BaseRetailerSpider):
             )
             
         except Exception as e:
-            logger.error(f"Error parsing Techland product card: {e}")
+            logger.error(f"Error parsing Techland product card: {e}\n{traceback.format_exc()}")
             return None
     
     def follow_pagination_via_click(self, response):
@@ -274,6 +279,11 @@ class TechlandSpider(BaseRetailerSpider):
             query_params = parse_qs(parsed.query)
             current_page = int(query_params.get('page', [1])[0])
             next_page = current_page + 1
+            
+            # Check max page limit to prevent excessive Playwright click chains
+            if next_page > self.MAX_PAGES:
+                logger.info(f"Reached max page limit ({self.MAX_PAGES}), stopping pagination")
+                return
             
             # Check if next page was already scraped
             page_id = f"{parsed.path}:{next_page}"

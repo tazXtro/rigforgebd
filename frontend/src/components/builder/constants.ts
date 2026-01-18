@@ -1,0 +1,85 @@
+import { ComponentConfig, Shop } from "./types"
+
+export const COMPONENT_CONFIGS: ComponentConfig[] = [
+    {
+        category: "CPU",
+        label: "CPU",
+        description: "Central Processing Unit",
+        icon: "Cpu",
+        required: true,
+        maxSlots: 1,
+    },
+    {
+        category: "Motherboard",
+        label: "Motherboard",
+        description: "Main circuit board",
+        icon: "CircuitBoard",
+        required: true,
+        maxSlots: 1,
+    },
+    {
+        category: "RAM",
+        label: "RAM",
+        description: "Memory modules",
+        icon: "MemoryStick",
+        required: true,
+        maxSlots: 4,
+        allowQuantity: true,
+    },
+    {
+        category: "Storage",
+        label: "Storage",
+        description: "SSD or HDD drives",
+        icon: "HardDrive",
+        required: true,
+        maxSlots: 4,
+    },
+    {
+        category: "GPU",
+        label: "GPU",
+        description: "Graphics Processing Unit",
+        icon: "MonitorPlay",
+        required: false,
+        maxSlots: 2,
+    },
+    {
+        category: "PSU",
+        label: "PSU",
+        description: "Power Supply Unit",
+        icon: "Zap",
+        required: true,
+        maxSlots: 1,
+    },
+    {
+        category: "Case",
+        label: "Case",
+        description: "Computer chassis",
+        icon: "Box",
+        required: true,
+        maxSlots: 1,
+    },
+    {
+        category: "Cooler",
+        label: "Cooler",
+        description: "CPU cooling solution",
+        icon: "Fan",
+        required: false,
+        maxSlots: 1,
+    },
+    {
+        category: "Monitor",
+        label: "Monitor",
+        description: "Display monitor",
+        icon: "Monitor",
+        required: false,
+        maxSlots: 3,
+    },
+]
+
+export const SHOPS: Shop[] = [
+    { name: "Star Tech", url: "https://www.startech.com.bd" },
+    { name: "Techland", url: "https://www.techlandbd.com" },
+    { name: "Potaka IT", url: "https://www.potakait.com" },
+    { name: "Skyland", url: "https://www.skyland.com.bd" },
+    { name: "Ryans", url: "https://www.ryanscomputers.com" },
+]

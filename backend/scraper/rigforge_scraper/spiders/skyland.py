@@ -5,6 +5,7 @@ Scrapes PC component products from Skyland Computer Bangladesh.
 """
 
 import logging
+import traceback
 from urllib.parse import urljoin
 
 import scrapy
@@ -246,7 +247,7 @@ class SkylandSpider(BaseRetailerSpider):
             )
             
         except Exception as e:
-            logger.error(f"Error parsing product card: {e}")
+            logger.error(f"Error parsing product card: {e}\n{traceback.format_exc()}")
             return None
     
     def follow_pagination(self, response):

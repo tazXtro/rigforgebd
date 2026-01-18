@@ -5,6 +5,7 @@ Scrapes PC component products from Potaka IT Bangladesh.
 """
 
 import logging
+import traceback
 from urllib.parse import urljoin
 
 import scrapy
@@ -262,7 +263,7 @@ class PotakaitSpider(BaseRetailerSpider):
             )
             
         except Exception as e:
-            logger.error(f"Error parsing product card: {e}")
+            logger.error(f"Error parsing product card: {e}\n{traceback.format_exc()}")
             return None
     
     def extract_specs(self, card) -> dict:
