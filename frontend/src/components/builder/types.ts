@@ -46,6 +46,7 @@ export interface ComponentSlot {
     product: Product | null
     quantity: number
     isSelected: boolean
+    selectedRetailer?: string  // The retailer user selected to buy from
 }
 
 export interface Shop {

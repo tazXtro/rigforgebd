@@ -31,8 +31,8 @@ export function filterProducts(
 
         // Brand filter
         if (filters.brands && filters.brands.length > 0) {
-            const brandLower = product.brand.toLowerCase().replace(/\s+/g, "-")
-            if (!filters.brands.some((b) => brandLower.includes(b))) {
+            const productBrand = product.brand.toLowerCase()
+            if (!filters.brands.some((b) => productBrand === b.toLowerCase())) {
                 return false
             }
         }

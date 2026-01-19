@@ -6,8 +6,12 @@ export interface ProductsQueryParams {
     search?: string;
     brand?: string;
     sort?: string;  // Sort option: newest, name_asc, name_desc, price_asc, price_desc
+    min_price?: number;
+    max_price?: number;
+    retailers?: string;  // Comma-separated retailer slugs
     page?: number;
     page_size?: number;
+    grouped?: boolean;  // If true, group all retailers under one product (for builder)
 }
 
 export interface PaginationInfo {
@@ -71,5 +75,15 @@ export interface Retailer {
  */
 export async function fetchRetailers(): Promise<Retailer[]> {
     const response = await api.get<Retailer[]>('/products/retailers/');
+    return response.data;
+}
+
+/**
+ * Fetch available brands, optionally filtered by category
+ */
+export async function fetchBrands(category?: string): Promise<string[]> {
+    const response = await api.get<string[]>('/products/brands/', {
+        params: category ? { category } : undefined
+    });
     return response.data;
 }

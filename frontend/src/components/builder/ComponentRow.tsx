@@ -22,7 +22,7 @@ interface ComponentRowProps {
 }
 
 export function ComponentRow({ config, index }: ComponentRowProps) {
-  const { getSlotsForCategory, removeSlot, selectSlot, setSlotQuantity } = useBuilder()
+  const { getSlotsForCategory, removeSlot, selectSlot, setSlotQuantity, setSlotRetailer } = useBuilder()
   const [showProductSelector, setShowProductSelector] = useState(false)
   const slots = getSlotsForCategory(config.category)
   const selectedSlot = slots.find((s) => s.isSelected)
@@ -32,10 +32,66 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
   }
 
   // Calculate shop prices for selected product
+  // Uses flexible matching to handle name variations (e.g., "Techland" vs "Tech Land")
   const getShopPrice = (shopName: string) => {
     if (!selectedSlot?.product) return null
-    const priceInfo = selectedSlot.product.prices.find((p) => p.shop === shopName)
+    
+    // Normalize shop name for comparison (lowercase, remove spaces)
+    const normalizedShopName = shopName.toLowerCase().replace(/\s+/g, '')
+    
+    const priceInfo = selectedSlot.product.prices.find((p) => {
+      const normalizedPriceName = p.shop.toLowerCase().replace(/\s+/g, '')
+      return normalizedPriceName === normalizedShopName || 
+             normalizedPriceName.includes(normalizedShopName) ||
+             normalizedShopName.includes(normalizedPriceName)
+    })
     return priceInfo?.price
+  }
+
+  // Get the base price (from selected retailer, or minPrice if none selected)
+  const getBasePrice = () => {
+    if (!selectedSlot?.product) return null
+    
+    if (selectedSlot.selectedRetailer) {
+      const normalizedRetailer = selectedSlot.selectedRetailer.toLowerCase().replace(/\s+/g, '')
+      const priceInfo = selectedSlot.product.prices.find((p) => {
+        const normalizedPriceName = p.shop.toLowerCase().replace(/\s+/g, '')
+        return normalizedPriceName === normalizedRetailer ||
+               normalizedPriceName.includes(normalizedRetailer) ||
+               normalizedRetailer.includes(normalizedPriceName)
+      })
+      if (priceInfo) {
+        return priceInfo.price
+      }
+    }
+    return selectedSlot.product.minPrice
+  }
+
+  // Get the minimum price and the retailer offering it
+  const getMinPriceInfo = () => {
+    if (!selectedSlot?.product) return null
+    
+    let minPrice = Infinity
+    let minRetailer = ''
+    
+    for (const priceInfo of selectedSlot.product.prices) {
+      if (priceInfo.price < minPrice) {
+        minPrice = priceInfo.price
+        minRetailer = priceInfo.shop
+      }
+    }
+    
+    return minPrice < Infinity ? { price: minPrice, retailer: minRetailer } : null
+  }
+
+  // Check if a shop is the selected retailer
+  const isSelectedRetailer = (shopName: string) => {
+    if (!selectedSlot?.selectedRetailer) return false
+    const normalizedShopName = shopName.toLowerCase().replace(/\s+/g, '')
+    const normalizedSelected = selectedSlot.selectedRetailer.toLowerCase().replace(/\s+/g, '')
+    return normalizedShopName === normalizedSelected ||
+           normalizedShopName.includes(normalizedSelected) ||
+           normalizedSelected.includes(normalizedShopName)
   }
 
   return (
@@ -171,12 +227,42 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
           )}
         </td>
 
-        {/* Base Price Column */}
+        {/* Base Price Column - Selected retailer's price */}
         <td className="p-4 text-center">
           {selectedSlot?.product ? (
-            <span className="text-sm font-semibold text-foreground">
-              ৳{(selectedSlot.product.basePrice * selectedSlot.quantity).toLocaleString()}
-            </span>
+            <div className="flex flex-col items-center">
+              <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                ৳{((getBasePrice() || 0) * selectedSlot.quantity).toLocaleString()}
+              </span>
+              {selectedSlot.selectedRetailer && (
+                <span className="text-xs text-muted-foreground mt-0.5">
+                  {selectedSlot.selectedRetailer}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-sm text-muted-foreground">-</span>
+          )}
+        </td>
+
+        {/* Min Price Column - Lowest price with retailer name */}
+        <td className="p-4 text-center">
+          {selectedSlot?.product ? (
+            (() => {
+              const minInfo = getMinPriceInfo()
+              return minInfo ? (
+                <div className="flex flex-col items-center">
+                  <span className="text-sm font-bold text-green-600 dark:text-green-400">
+                    ৳{(minInfo.price * selectedSlot.quantity).toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground mt-0.5">
+                    {minInfo.retailer}
+                  </span>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">-</span>
+              )
+            })()
           ) : (
             <span className="text-sm text-muted-foreground">-</span>
           )}
@@ -185,17 +271,25 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
         {/* Shop Price Columns */}
         {SHOPS.map((shop) => {
           const price = getShopPrice(shop.name)
+          const isSelected = isSelectedRetailer(shop.name)
           return (
             <td key={shop.name} className="p-4 text-center">
               {price && selectedSlot ? (
-                <span className={cn(
-                  "text-sm font-medium",
-                  price === selectedSlot.product?.minPrice
-                    ? "text-green-600 dark:text-green-400 font-semibold"
-                    : "text-foreground"
-                )}>
+                <Button
+                  variant={isSelected ? "default" : "ghost"}
+                  size="sm"
+                  className={cn(
+                    "h-auto py-1 px-2",
+                    isSelected
+                      ? "bg-blue-500 hover:bg-blue-600 text-white"
+                      : price === selectedSlot.product?.minPrice
+                        ? "text-green-600 dark:text-green-400 font-semibold hover:bg-green-50 dark:hover:bg-green-900/20"
+                        : "text-foreground hover:bg-muted"
+                  )}
+                  onClick={() => setSlotRetailer(selectedSlot.id, shop.name)}
+                >
                   ৳{(price * selectedSlot.quantity).toLocaleString()}
-                </span>
+                </Button>
               ) : (
                 <span className="text-sm text-muted-foreground">N/A</span>
               )}

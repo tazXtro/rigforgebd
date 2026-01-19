@@ -106,13 +106,17 @@ export function ProductsPageClient({
             setIsLoading(true)
             setError(null)
             try {
-                // Only fetch products - category counts and retailers are stable
+                // Fetch products with all filters
                 const productsResponse = await fetchProducts({
                     category: category || undefined,
                     search: debouncedSearch || undefined,
+                    brand: filters.brands.length > 0 ? filters.brands.join(",") : undefined,
                     sort: sortBy || undefined,
                     page: currentPage,
                     page_size: PAGE_SIZE,
+                    min_price: filters.minPrice > 0 ? filters.minPrice : undefined,
+                    max_price: filters.maxPrice < 1000000 ? filters.maxPrice : undefined,
+                    retailers: filters.retailers.length > 0 ? filters.retailers.join(",") : undefined,
                 })
                 setProducts(productsResponse.products)
                 setPagination(productsResponse.pagination)
@@ -134,26 +138,16 @@ export function ProductsPageClient({
             }
         }
         loadData()
-    }, [category, currentPage, debouncedSearch, sortBy, needsClientFetch, initialCategory])
+    }, [category, currentPage, debouncedSearch, sortBy, filters.brands.join(','), filters.minPrice, filters.maxPrice, filters.retailers.join(','), needsClientFetch, initialCategory])
 
     // Mark that future changes need client fetch
     useEffect(() => {
         setNeedsClientFetch(true)
-    }, [category, debouncedSearch, sortBy, currentPage])
+    }, [category, debouncedSearch, sortBy, currentPage, filters.brands.join(','), filters.minPrice, filters.maxPrice, filters.retailers.join(',')])
 
-    // Client-side filtering for brand/retailer/price (search and sort are server-side)
-    const filteredProducts = useMemo(() => {
-        return filterProducts(products, {
-            search: "", // Search is handled server-side now
-            category: "", // Category already filtered server-side
-            brands: filters.brands,
-            retailers: filters.retailers,
-            minPrice: filters.minPrice,
-            maxPrice: filters.maxPrice,
-            inStock: filters.inStock,
-        })
-        // Note: Sorting is now handled server-side
-    }, [products, filters])
+    // All filtering is now handled server-side
+    // Just use products directly from the API
+    const filteredProducts = products
 
     // Pagination handlers
     const handlePageChange = useCallback((newPage: number) => {
@@ -377,6 +371,7 @@ export function ProductsPageClient({
                                 onFilterChange={handleFilterChange}
                                 onClearAll={handleClearFilters}
                                 retailers={retailers}
+                                category={category}
                             />
                         </div>
                     </div>

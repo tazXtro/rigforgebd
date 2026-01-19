@@ -9,8 +9,10 @@ import { COMPONENT_CONFIGS, SHOPS } from "./constants"
 import { Badge } from "@/components/ui/badge"
 
 export function PCBuilder() {
-  const { getTotalPrice, clearBuild, slots } = useBuilder()
+  const { getTotalPrice, clearBuild, slots, getMinPriceTotal, getBaseTotal, getShopTotal } = useBuilder()
   const totalPrice = getTotalPrice()
+  const minPriceTotal = getMinPriceTotal()
+  const baseTotal = getBaseTotal()
   const selectedSlots = slots.filter((slot) => slot.isSelected)
 
   // Group components by section
@@ -85,8 +87,21 @@ export function PCBuilder() {
                 <th className="text-left p-4 font-semibold text-sm text-foreground min-w-[280px]">
                   Selection
                 </th>
-                <th className="text-center p-4 font-semibold text-sm text-foreground min-w-[100px]">
-                  Base
+                <th className="text-center p-4 font-semibold text-sm text-foreground min-w-[120px]">
+                  <Badge variant="secondary" className="font-normal bg-blue-500/10 text-blue-600">
+                    Base
+                  </Badge>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Selected
+                  </div>
+                </th>
+                <th className="text-center p-4 font-semibold text-sm text-foreground min-w-[120px]">
+                  <Badge variant="secondary" className="font-normal bg-green-500/10 text-green-600">
+                    Minimum
+                  </Badge>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    Lowest
+                  </div>
                 </th>
                 {SHOPS.map((shop) => (
                   <th
@@ -94,7 +109,7 @@ export function PCBuilder() {
                     className="text-center p-4 font-semibold text-sm min-w-[100px]"
                   >
                     <Badge variant="outline" className="font-normal">
-                      {shop.name === "Star Tech" ? "ST" :
+                      {shop.name === "Startech" ? "ST" :
                         shop.name === "Techland" ? "TL" :
                           shop.name === "Potaka IT" ? "PI" :
                             shop.name === "Skyland" ? "SK" : "UT"}
@@ -120,14 +135,20 @@ export function PCBuilder() {
                 <td className="p-4 font-semibold text-foreground" colSpan={2}>
                   Total:
                 </td>
-                <td className="text-center p-4 font-bold text-lg text-primary">
-                  ৳{totalPrice > 0 ? totalPrice.toLocaleString() : 'N/A'}
+                <td className="text-center p-4 font-bold text-lg text-blue-600 dark:text-blue-400">
+                  ৳{baseTotal > 0 ? baseTotal.toLocaleString() : 'N/A'}
                 </td>
-                {SHOPS.map((shop) => (
-                  <td key={shop.name} className="text-center p-4 text-muted-foreground">
-                    N/A
-                  </td>
-                ))}
+                <td className="text-center p-4 font-bold text-lg text-green-600 dark:text-green-400">
+                  ৳{minPriceTotal > 0 ? minPriceTotal.toLocaleString() : 'N/A'}
+                </td>
+                {SHOPS.map((shop) => {
+                  const shopTotal = getShopTotal(shop.name)
+                  return (
+                    <td key={shop.name} className="text-center p-4 text-foreground font-medium">
+                      {shopTotal > 0 ? `৳${shopTotal.toLocaleString()}` : 'N/A'}
+                    </td>
+                  )
+                })}
               </tr>
             </tbody>
           </table>

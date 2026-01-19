@@ -1,15 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown, X, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { Retailer } from "@/lib/productsApi"
+import { Retailer, fetchBrands } from "@/lib/productsApi"
 
 interface FilterSection {
     id: string
     label: string
-    options: { value: string; label: string; count?: number }[]
+    options: { value: string; label: string }[]
 }
 
 interface ProductFiltersProps {
@@ -23,20 +23,9 @@ interface ProductFiltersProps {
     onFilterChange: (key: string, value: unknown) => void
     onClearAll: () => void
     retailers?: Retailer[]  // Dynamic retailers from API
+    category?: string  // Current category for filtering brands
 }
 
-const brandOptions = [
-    { value: "amd", label: "AMD", count: 234 },
-    { value: "intel", label: "Intel", count: 189 },
-    { value: "nvidia", label: "NVIDIA", count: 156 },
-    { value: "asus", label: "ASUS", count: 312 },
-    { value: "msi", label: "MSI", count: 278 },
-    { value: "gigabyte", label: "Gigabyte", count: 245 },
-    { value: "corsair", label: "Corsair", count: 167 },
-    { value: "gskill", label: "G.Skill", count: 89 },
-    { value: "samsung", label: "Samsung", count: 134 },
-    { value: "western-digital", label: "Western Digital", count: 98 },
-]
 
 function FilterAccordion({
     title,
@@ -80,18 +69,45 @@ function FilterAccordion({
     )
 }
 
-export function ProductFilters({ filters, onFilterChange, onClearAll, retailers = [] }: ProductFiltersProps) {
-    // Convert retailers to option format for rendering
+export function ProductFilters({ filters, onFilterChange, onClearAll, retailers = [], category }: ProductFiltersProps) {
+    // Dynamic brands state
+    const [brands, setBrands] = useState<string[]>([])
+    const [loadingBrands, setLoadingBrands] = useState(false)
+    
+    // Fetch brands when category changes
+    useEffect(() => {
+        async function loadBrands() {
+            setLoadingBrands(true)
+            try {
+                const fetchedBrands = await fetchBrands(category)
+                setBrands(fetchedBrands)
+            } catch (error) {
+                console.error("Failed to fetch brands:", error)
+                setBrands([])
+            } finally {
+                setLoadingBrands(false)
+            }
+        }
+        loadBrands()
+    }, [category])
+    
+    // Convert brands to option format
+    // Use brand name as both value and label to avoid duplicate slug issues
+    const brandOptions = brands.map(brand => ({
+        value: brand,
+        label: brand,
+    }))
+    
+    // Convert retailers to option format for rendering (without count)
     const retailerOptions = retailers.map(r => ({
         value: r.slug,
         label: r.name,
-        count: r.product_count,
     }))
+    
     const [openSections, setOpenSections] = useState<Record<string, boolean>>({
         price: true,
         brands: true,
         retailers: false,
-        availability: true,
     })
 
     const toggleSection = (section: string) => {
@@ -116,8 +132,7 @@ export function ProductFilters({ filters, onFilterChange, onClearAll, retailers 
         filters.brands.length > 0 ||
         filters.retailers.length > 0 ||
         filters.minPrice > 0 ||
-        filters.maxPrice < 1000000 ||
-        filters.inStock
+        filters.maxPrice < 1000000
 
     return (
         <div className="space-y-4">
@@ -207,23 +222,28 @@ export function ProductFilters({ filters, onFilterChange, onClearAll, retailers 
                 onToggle={() => toggleSection("brands")}
             >
                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {brandOptions.map((brand) => (
-                        <label
-                            key={brand.value}
-                            className="flex items-center gap-2 cursor-pointer group"
-                        >
-                            <input
-                                type="checkbox"
-                                checked={filters.brands.includes(brand.value)}
-                                onChange={() => handleBrandToggle(brand.value)}
-                                className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
-                            />
-                            <span className="flex-1 text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-                                {brand.label}
-                            </span>
-                            <span className="text-xs text-muted-foreground/60">{brand.count}</span>
-                        </label>
-                    ))}
+                    {loadingBrands ? (
+                        <p className="text-xs text-muted-foreground py-2">Loading brands...</p>
+                    ) : brandOptions.length === 0 ? (
+                        <p className="text-xs text-muted-foreground py-2">No brands available</p>
+                    ) : (
+                        brandOptions.map((brand) => (
+                            <label
+                                key={brand.value}
+                                className="flex items-center gap-2 cursor-pointer group"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={filters.brands.includes(brand.value)}
+                                    onChange={() => handleBrandToggle(brand.value)}
+                                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+                                />
+                                <span className="flex-1 text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                                    {brand.label}
+                                </span>
+                            </label>
+                        ))
+                    )}
                 </div>
             </FilterAccordion>
 
@@ -248,29 +268,9 @@ export function ProductFilters({ filters, onFilterChange, onClearAll, retailers 
                             <span className="flex-1 text-sm text-muted-foreground group-hover:text-foreground transition-colors">
                                 {retailer.label}
                             </span>
-                            <span className="text-xs text-muted-foreground/60">{retailer.count}</span>
                         </label>
                     ))}
                 </div>
-            </FilterAccordion>
-
-            {/* Availability */}
-            <FilterAccordion
-                title="Availability"
-                isOpen={openSections.availability}
-                onToggle={() => toggleSection("availability")}
-            >
-                <label className="flex items-center gap-2 cursor-pointer group">
-                    <input
-                        type="checkbox"
-                        checked={filters.inStock}
-                        onChange={(e) => onFilterChange("inStock", e.target.checked)}
-                        className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
-                    />
-                    <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
-                        In stock only
-                    </span>
-                </label>
             </FilterAccordion>
 
             {/* Active Filter Tags */}
@@ -299,14 +299,6 @@ export function ProductFilters({ filters, onFilterChange, onClearAll, retailers 
                                 </button>
                             </span>
                         ))}
-                        {filters.inStock && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-600 dark:text-green-400 text-xs rounded-full">
-                                In stock
-                                <button onClick={() => onFilterChange("inStock", false)}>
-                                    <X className="w-3 h-3" />
-                                </button>
-                            </span>
-                        )}
                     </div>
                 </div>
             )}

@@ -392,8 +392,12 @@ class ProductService:
         page_size: int = 24,
         category_slug: Optional[str] = None,
         search: Optional[str] = None,
-        brand: Optional[str] = None,
+        brands: Optional[List[str]] = None,
         sort_by: Optional[str] = None,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+        retailers: Optional[List[str]] = None,
+        grouped: bool = False,
     ) -> Dict[str, Any]:
         """
         Get products with server-side pagination, filtering, and sorting.
@@ -411,21 +415,40 @@ class ProductService:
             search: Optional search term
             brand: Optional brand filter
             sort_by: Sort option (newest, name_asc, name_desc, price_asc, price_desc)
+            grouped: If True, return products with all retailers grouped (for builder)
             
         Returns:
             Dict with 'products' list and 'pagination' metadata
         """
         try:
-            # We now return one entry per product-retailer listing
-            # This allows users to compare prices across stores directly in the grid
-            return self._get_product_listings_paginated(
-                page=page,
-                page_size=page_size,
-                category_slug=category_slug,
-                search=search,
-                brand=brand,
-                sort_by=sort_by,
-            )
+            if grouped:
+                # Return products with all retailers grouped under one product
+                # This is used by the system builder
+                return self._get_products_grouped_paginated(
+                    page=page,
+                    page_size=page_size,
+                    category_slug=category_slug,
+                    search=search,
+                    brands=brands,
+                    sort_by=sort_by,
+                    min_price=min_price,
+                    max_price=max_price,
+                    retailers=retailers,
+                )
+            else:
+                # Return one entry per product-retailer listing (exploded view)
+                # This allows users to compare prices across stores directly in the grid
+                return self._get_product_listings_paginated(
+                    page=page,
+                    page_size=page_size,
+                    category_slug=category_slug,
+                    search=search,
+                    brands=brands,
+                    sort_by=sort_by,
+                    min_price=min_price,
+                    max_price=max_price,
+                    retailers=retailers,
+                )
             
         except ProductRepositoryError as e:
             logger.error(f"Failed to get paginated products: {e}")
@@ -441,14 +464,166 @@ class ProductService:
                 },
             }
     
+    def _get_products_grouped_paginated(
+        self,
+        page: int,
+        page_size: int,
+        category_slug: Optional[str],
+        search: Optional[str],
+        brands: Optional[List[str]],
+        sort_by: Optional[str],
+        min_price: Optional[float],
+        max_price: Optional[float],
+        retailers: Optional[List[str]],
+    ) -> Dict[str, Any]:
+        """
+        Get products with all retailers grouped under each product.
+        
+        Each product appears once with all its retailer prices in the 'retailers' array.
+        This is useful for system builder where you want to see all prices at once.
+        """
+        # Fetch all products matching filters
+        result = self.product_repo.get_paginated(
+            page=1,
+            page_size=10000,  # Get all matching products
+            category_slug=category_slug,
+            search=search,
+            brand=None,  # Don't filter by brand at DB level, we'll do it after
+            sort_by=None,  # We'll sort after adding prices
+        )
+        
+        all_products = result["products"]
+        
+        if not all_products:
+            return {
+                "products": [],
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total_count": 0,
+                    "total_pages": 0,
+                    "has_next": False,
+                    "has_prev": False,
+                },
+            }
+        
+        # Batch fetch ALL prices
+        product_ids = [p["id"] for p in all_products]
+        all_prices = self.price_repo.get_by_product_ids(product_ids)
+        
+        # Group prices by product_id
+        prices_by_product = {}
+        for price in all_prices:
+            pid = price["product_id"]
+            if pid not in prices_by_product:
+                prices_by_product[pid] = []
+            prices_by_product[pid].append(price)
+        
+        # Build products with all retailers
+        products_with_prices = []
+        for product in all_products:
+            # Apply brand filter
+            if brands and len(brands) > 0:
+                product_brand = product.get("brand", "")
+                if not product_brand:
+                    continue
+                brand_match = any(brand.lower() == product_brand.lower() for brand in brands)
+                if not brand_match:
+                    continue
+            
+            prices = prices_by_product.get(product["id"], [])
+            
+            # Build retailers list
+            retailers_list = []
+            min_product_price = None
+            for price in prices:
+                retailer_data = price.get("retailers", {})
+                retailer_slug = retailer_data.get("slug", "")
+                price_value = float(price["price"])
+                
+                # Apply retailer filter
+                if retailers and len(retailers) > 0:
+                    if retailer_slug not in retailers:
+                        continue
+                
+                # Apply price filter
+                if min_price is not None and price_value < min_price:
+                    continue
+                if max_price is not None and price_value > max_price:
+                    continue
+                
+                retailers_list.append({
+                    "name": retailer_data.get("name", "Unknown"),
+                    "price": price_value,
+                    "inStock": price.get("in_stock", True),
+                    "url": price["product_url"],
+                })
+                
+                # Track minimum price
+                if min_product_price is None or price_value < min_product_price:
+                    min_product_price = price_value
+            
+            # Skip products with no matching retailers
+            if not retailers_list:
+                continue
+            
+            # Calculate stats
+            total_retailers = len(retailers_list)
+            in_stock_count = sum(1 for r in retailers_list if r.get("inStock", True))
+            
+            product_copy = {
+                **product,
+                "retailers": retailers_list,
+                "total_retailers": total_retailers,
+                "in_stock_count": in_stock_count,
+            }
+            products_with_prices.append(product_copy)
+        
+        # Apply sorting
+        if sort_by == "price_asc":
+            products_with_prices.sort(key=lambda x: min(r["price"] for r in x["retailers"]) if x["retailers"] else float('inf'))
+        elif sort_by == "price_desc":
+            products_with_prices.sort(key=lambda x: min(r["price"] for r in x["retailers"]) if x["retailers"] else 0, reverse=True)
+        elif sort_by == "name_asc":
+            products_with_prices.sort(key=lambda x: x.get("name", "").lower())
+        elif sort_by == "name_desc":
+            products_with_prices.sort(key=lambda x: x.get("name", "").lower(), reverse=True)
+        else:
+            # Default: newest first
+            products_with_prices.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        
+        # Calculate pagination
+        total_count = len(products_with_prices)
+        total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+        
+        # Apply pagination
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_products = products_with_prices[start_idx:end_idx]
+        
+        return {
+            "products": paginated_products,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_count": total_count,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1,
+            },
+        }
+    
     def _get_product_listings_paginated(
         self,
         page: int,
         page_size: int,
         category_slug: Optional[str],
         search: Optional[str],
-        brand: Optional[str],
+        brands: Optional[List[str]],
         sort_by: Optional[str],
+        min_price: Optional[float],
+        max_price: Optional[float],
+        retailers: Optional[List[str]],
     ) -> Dict[str, Any]:
         """
         Get product listings with one entry per retailer.
@@ -460,18 +635,15 @@ class ProductService:
         
         Example: If "RTX 4090" is sold at StarTech and Techland,
         it will appear as 2 separate cards in the grid.
-        
-        This method uses database-level pagination for efficiency,
-        querying the prices table directly with product data joined.
         """
-        # Use the optimized database-level pagination
-        result = self.price_repo.get_listings_paginated(
-            page=page,
-            page_size=page_size,
+        # Fetch all products matching filters (excluding brand - we'll filter that after)
+        result = self.product_repo.get_paginated(
+            page=1,
+            page_size=10000,  # Get all matching products
             category_slug=category_slug,
             search=search,
-            brand=brand,
-            sort_by=sort_by,
+            brand=None,  # Don't filter by brand at DB level, we'll do it after
+            sort_by=None,  # We'll sort after creating listings
         )
         
         raw_listings = result.get("listings", [])
@@ -490,7 +662,26 @@ class ProductService:
                 },
             }
         
-        # Transform the raw listings to the expected format
+        # Batch fetch ALL prices
+        product_ids = [p["id"] for p in all_products]
+        all_prices = self.price_repo.get_by_product_ids(product_ids)
+        
+        # Create a dict for quick product lookup
+        products_by_id = {p["id"]: p for p in all_products}
+        
+        # Count retailers per product and track in-stock counts
+        retailers_per_product = {}  # product_id -> list of prices
+        for price in all_prices:
+            pid = price["product_id"]
+            if pid not in retailers_per_product:
+                retailers_per_product[pid] = []
+            retailers_per_product[pid].append(price)
+        
+        # "Explode" products into listings (one per retailer)
+        # Each listing is a copy of the product with a single retailer
+        if brands:
+            logger.info(f"Filtering products by brands: {brands}")
+        
         listings = []
         for price in raw_listings:
             product = price.get("products", {})
@@ -499,15 +690,47 @@ class ProductService:
             if not product:
                 continue
             
-            # Create a listing entry
+            # Apply brand filter
+            if brands and len(brands) > 0:
+                product_brand = product.get("brand", "")
+                if not product_brand:
+                    continue
+                # Case-insensitive exact match
+                brand_match = any(brand.lower() == product_brand.lower() for brand in brands)
+                if not brand_match:
+                    logger.debug(f"Brand filter: excluding product '{product.get('name')}' with brand '{product_brand}' (looking for {brands})")
+                    continue
+            
+            retailer_data = price.get("retailers", {})
+            retailer_slug = retailer_data.get("slug", "")
+            price_value = float(price["price"])
+            
+            # Apply price filter
+            if min_price is not None and price_value < min_price:
+                continue
+            if max_price is not None and price_value > max_price:
+                continue
+            
+            # Apply retailer filter
+            if retailers and len(retailers) > 0:
+                if retailer_slug not in retailers:
+                    continue
+            
+            product_prices = retailers_per_product.get(price["product_id"], [])
+            
+            # Calculate totals for this product across all retailers
+            total_retailers = len(product_prices)
+            in_stock_count = sum(1 for p in product_prices if p.get("in_stock", True))
+            
+            # Create a new listing entry (product copy with single retailer)
             listing = {
                 **product,  # Copy all product fields
                 "listing_id": price["id"],  # Unique ID for this listing
                 "total_retailers": 1,  # Will be calculated if needed
                 "in_stock_count": 1 if price.get("in_stock", True) else 0,
                 "retailers": [{
-                    "name": retailer_data.get("name", "Unknown") if retailer_data else "Unknown",
-                    "price": float(price["price"]),
+                    "name": retailer_data.get("name", "Unknown"),
+                    "price": price_value,
                     "inStock": price.get("in_stock", True),
                     "url": price["product_url"],
                 }],
@@ -543,6 +766,22 @@ class ProductService:
         except ProductRepositoryError as e:
             logger.error(f"Failed to get category counts: {e}")
             return {}
+    
+    def get_available_brands(self, category_slug: Optional[str] = None) -> List[str]:
+        """
+        Get list of available brands, optionally filtered by category.
+        
+        Args:
+            category_slug: Optional category to filter brands by
+            
+        Returns:
+            List of unique brand names
+        """
+        try:
+            return self.product_repo.get_available_brands(category_slug)
+        except ProductRepositoryError as e:
+            logger.error(f"Failed to get available brands: {e}")
+            return []
 
 
 # Singleton instances
