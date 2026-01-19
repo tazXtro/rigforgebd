@@ -77,9 +77,9 @@ export const COMPONENT_CONFIGS: ComponentConfig[] = [
 ]
 
 export const SHOPS: Shop[] = [
-    { name: "Star Tech", url: "https://www.startech.com.bd" },
+    { name: "Startech", url: "https://www.startech.com.bd" },
     { name: "Techland", url: "https://www.techlandbd.com" },
     { name: "Potaka IT", url: "https://www.potakait.com" },
     { name: "Skyland", url: "https://www.skyland.com.bd" },
-    { name: "Ryans", url: "https://www.ryanscomputers.com" },
+    { name: "Ultratech", url: "https://www.ultratech.com.bd" },
 ]

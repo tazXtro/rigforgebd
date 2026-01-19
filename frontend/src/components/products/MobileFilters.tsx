@@ -39,7 +39,6 @@ export function MobileFilters({
     const activeFilterCount =
         filters.brands.length +
         filters.retailers.length +
-        (filters.inStock ? 1 : 0) +
         (filters.minPrice > 0 ? 1 : 0) +
         (filters.maxPrice < 1000000 ? 1 : 0)
 
@@ -109,6 +108,7 @@ export function MobileFilters({
                                         onFilterChange={onFilterChange}
                                         onClearAll={onClearAll}
                                         retailers={retailers}
+                                        category={activeCategory}
                                     />
                                 </div>
                             </div>

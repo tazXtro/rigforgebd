@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Search, ExternalLink, Check, Store, X } from "lucide-react"
+import { Search, ExternalLink, Check, Store, X, Loader2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -14,10 +14,11 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ComponentCategory, Product } from "./types"
+import { ComponentCategory, Product, ShopPrice } from "./types"
 import { useBuilder } from "./BuilderContext"
 import { cn } from "@/lib/utils"
-import { SHOPS } from "./constants"
+import { fetchProducts } from "@/lib/productsApi"
+import { Product as ApiProduct } from "@/components/products/ProductCard"
 
 interface ProductSelectorProps {
   open: boolean
@@ -26,238 +27,46 @@ interface ProductSelectorProps {
   onSelect: (product: Product) => void
 }
 
-// Mock data - Replace with actual API call
-const MOCK_PRODUCTS: Product[] = [
-  // CPUs
-  {
-    id: "cpu-1",
-    name: "Intel Core i5-13600K",
-    brand: "Intel",
-    image: "https://images.unsplash.com/photo-1555680202-c0f50942e9e9?w=400&h=400&fit=crop",
-    category: "CPU",
-    specifications: {
-      Cores: "14",
-      Threads: "20",
-      "Base Clock": "3.5 GHz",
-      "Boost Clock": "5.1 GHz",
-    },
-    minPrice: 28500,
-    basePrice: 32000,
-    prices: [
-      { shop: "Star Tech", price: 29000, availability: "in-stock" },
-      { shop: "Techland", price: 28500, availability: "in-stock" },
-      { shop: "Potaka IT", price: 32000, availability: "out-of-stock" },
-      { shop: "Skyland", price: 29500, availability: "pre-order" },
-      { shop: "Ryans", price: 28800, availability: "in-stock" },
-    ],
-  },
-  {
-    id: "cpu-2",
-    name: "AMD Ryzen 5 7600X",
-    brand: "AMD",
-    image: "https://images.unsplash.com/photo-1591799264318-7e6ef8ddb7ea?w=400&h=400&fit=crop",
-    category: "CPU",
-    specifications: {
-      Cores: "6",
-      Threads: "12",
-      "Base Clock": "4.7 GHz",
-      "Boost Clock": "5.3 GHz",
-    },
-    minPrice: 25000,
-    basePrice: 28000,
-    prices: [
-      { shop: "Star Tech", price: 25000, availability: "in-stock" },
-      { shop: "Techland", price: 26000, availability: "in-stock" },
-      { shop: "Potaka IT", price: 27500, availability: "pre-order" },
-      { shop: "Skyland", price: 28000, availability: "in-stock" },
-      { shop: "Ryans", price: 25500, availability: "in-stock" },
-    ],
-  },
-  // Motherboards
-  {
-    id: "mobo-1",
-    name: "ASUS ROG STRIX B650-A",
-    brand: "ASUS",
-    image: "https://images.unsplash.com/photo-1591488320449-011701bb6704?w=400&h=400&fit=crop",
-    category: "Motherboard",
-    specifications: {
-      Socket: "AM5",
-      Chipset: "B650",
-      "Memory Slots": "4",
-      "Max RAM": "128GB",
-    },
-    minPrice: 22500,
-    basePrice: 25000,
-    prices: [
-      { shop: "Star Tech", price: 23000, availability: "in-stock" },
-      { shop: "Techland", price: 22500, availability: "in-stock" },
-      { shop: "Potaka IT", price: 24500, availability: "in-stock" },
-      { shop: "Skyland", price: 25000, availability: "out-of-stock" },
-      { shop: "Ryans", price: 23500, availability: "in-stock" },
-    ],
-  },
-  // RAM
-  {
-    id: "ram-1",
-    name: "Corsair Vengeance 16GB DDR5",
-    brand: "Corsair",
-    image: "https://images.unsplash.com/photo-1541348263662-e068662d82af?w=400&h=400&fit=crop",
-    category: "RAM",
-    specifications: {
-      Capacity: "16GB",
-      Type: "DDR5",
-      Speed: "6000MHz",
-      "CAS Latency": "CL30",
-    },
-    minPrice: 8500,
-    basePrice: 9500,
-    prices: [
-      { shop: "Star Tech", price: 8500, availability: "in-stock" },
-      { shop: "Techland", price: 8800, availability: "in-stock" },
-      { shop: "Potaka IT", price: 9200, availability: "in-stock" },
-      { shop: "Skyland", price: 9500, availability: "in-stock" },
-      { shop: "Ryans", price: 8700, availability: "in-stock" },
-    ],
-  },
-  // Storage
-  {
-    id: "storage-1",
-    name: "Samsung 980 Pro 1TB NVMe",
-    brand: "Samsung",
-    image: "https://images.unsplash.com/photo-1531492746076-161ca9bcad58?w=400&h=400&fit=crop",
-    category: "Storage",
-    specifications: {
-      Capacity: "1TB",
-      Type: "NVMe SSD",
-      Interface: "PCIe 4.0",
-      Speed: "7000MB/s",
-    },
-    minPrice: 12500,
-    basePrice: 14000,
-    prices: [
-      { shop: "Star Tech", price: 13000, availability: "in-stock" },
-      { shop: "Techland", price: 12500, availability: "in-stock" },
-      { shop: "Potaka IT", price: 13500, availability: "in-stock" },
-      { shop: "Skyland", price: 14000, availability: "out-of-stock" },
-      { shop: "Ryans", price: 12800, availability: "in-stock" },
-    ],
-  },
-  // GPU
-  {
-    id: "gpu-1",
-    name: "NVIDIA RTX 4060 Ti 8GB",
-    brand: "NVIDIA",
-    image: "https://images.unsplash.com/photo-1587202372634-32705e3bf49c?w=400&h=400&fit=crop",
-    category: "GPU",
-    specifications: {
-      Memory: "8GB GDDR6",
-      "CUDA Cores": "4352",
-      "Boost Clock": "2.54 GHz",
-      TDP: "160W",
-    },
-    minPrice: 48000,
-    basePrice: 52000,
-    prices: [
-      { shop: "Star Tech", price: 49000, availability: "in-stock" },
-      { shop: "Techland", price: 48000, availability: "in-stock" },
-      { shop: "Potaka IT", price: 51000, availability: "pre-order" },
-      { shop: "Skyland", price: 52000, availability: "in-stock" },
-      { shop: "Ryans", price: 48500, availability: "in-stock" },
-    ],
-  },
-  // PSU
-  {
-    id: "psu-1",
-    name: "Corsair RM750e 750W 80+ Gold",
-    brand: "Corsair",
-    image: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=400&h=400&fit=crop",
-    category: "PSU",
-    specifications: {
-      Wattage: "750W",
-      Efficiency: "80+ Gold",
-      Modular: "Fully",
-      Rails: "+12V",
-    },
-    minPrice: 9500,
-    basePrice: 11000,
-    prices: [
-      { shop: "Star Tech", price: 9800, availability: "in-stock" },
-      { shop: "Techland", price: 9500, availability: "in-stock" },
-      { shop: "Potaka IT", price: 10500, availability: "in-stock" },
-      { shop: "Skyland", price: 11000, availability: "in-stock" },
-      { shop: "Ryans", price: 9700, availability: "in-stock" },
-    ],
-  },
-  // Case
-  {
-    id: "case-1",
-    name: "NZXT H510 Flow ATX",
-    brand: "NZXT",
-    image: "https://images.unsplash.com/photo-1587202372775-e229f172b9d7?w=400&h=400&fit=crop",
-    category: "Case",
-    specifications: {
-      "Form Factor": "ATX",
-      Color: "Black",
-      "Side Panel": "Tempered Glass",
-      "Fan Support": "6x 120mm",
-    },
-    minPrice: 6500,
-    basePrice: 7500,
-    prices: [
-      { shop: "Star Tech", price: 6800, availability: "in-stock" },
-      { shop: "Techland", price: 6500, availability: "in-stock" },
-      { shop: "Potaka IT", price: 7200, availability: "in-stock" },
-      { shop: "Skyland", price: 7500, availability: "in-stock" },
-      { shop: "Ryans", price: 6700, availability: "in-stock" },
-    ],
-  },
-  // Cooler
-  {
-    id: "cooler-1",
-    name: "Cooler Master Hyper 212 RGB",
-    brand: "Cooler Master",
-    image: "https://images.unsplash.com/photo-1591488320449-011701bb6704?w=400&h=400&fit=crop",
-    category: "Cooler",
-    specifications: {
-      Type: "Tower Air",
-      Height: "159mm",
-      TDP: "180W",
-      RGB: "Yes",
-    },
-    minPrice: 3500,
-    basePrice: 4200,
-    prices: [
-      { shop: "Star Tech", price: 3600, availability: "in-stock" },
-      { shop: "Techland", price: 3500, availability: "in-stock" },
-      { shop: "Potaka IT", price: 3900, availability: "in-stock" },
-      { shop: "Skyland", price: 4200, availability: "in-stock" },
-      { shop: "Ryans", price: 3550, availability: "in-stock" },
-    ],
-  },
-  // Monitor
-  {
-    id: "monitor-1",
-    name: "ASUS TUF Gaming 27\" 165Hz",
-    brand: "ASUS",
-    image: "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?w=400&h=400&fit=crop",
-    category: "Monitor",
-    specifications: {
-      Size: "27 inch",
-      Resolution: "2560x1440",
-      "Refresh Rate": "165Hz",
-      Panel: "IPS",
-    },
-    minPrice: 28000,
-    basePrice: 32000,
-    prices: [
-      { shop: "Star Tech", price: 29000, availability: "in-stock" },
-      { shop: "Techland", price: 28000, availability: "in-stock" },
-      { shop: "Potaka IT", price: 31000, availability: "in-stock" },
-      { shop: "Skyland", price: 32000, availability: "out-of-stock" },
-      { shop: "Ryans", price: 28500, availability: "in-stock" },
-    ],
-  },
-]
+// Map builder categories to product API category slugs
+const CATEGORY_SLUG_MAP: Record<ComponentCategory, string> = {
+  CPU: "processors",
+  Motherboard: "motherboards",
+  RAM: "memory",
+  Storage: "storage",
+  GPU: "graphics-cards",
+  PSU: "power-supply",
+  Case: "cases",
+  Cooler: "cooling",
+  Monitor: "monitors",
+}
+
+// Transform API product to builder product format
+function transformApiProduct(apiProduct: ApiProduct, category: ComponentCategory): Product {
+  // Find min and max prices from retailers
+  const prices = apiProduct.retailers.map(r => r.price)
+  const minPrice = prices.length > 0 ? Math.min(...prices) : 0
+  const maxPrice = prices.length > 0 ? Math.max(...prices) : 0
+
+  // Transform retailer data to shop prices
+  const shopPrices: ShopPrice[] = apiProduct.retailers.map(retailer => ({
+    shop: retailer.name,
+    price: retailer.price,
+    availability: retailer.inStock ? "in-stock" : "out-of-stock",
+    url: retailer.url,
+  }))
+
+  return {
+    id: apiProduct.id,
+    name: apiProduct.name,
+    brand: apiProduct.brand,
+    image: apiProduct.image,
+    category: category,
+    specifications: apiProduct.specs || {},
+    minPrice: minPrice,
+    basePrice: maxPrice,
+    prices: shopPrices,
+  }
+}
 
 export function ProductSelector({
   open,
@@ -267,22 +76,81 @@ export function ProductSelector({
 }: ProductSelectorProps) {
   const { addProductToSlot } = useBuilder()
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Fetch products when dialog opens or category/search changes
+  const fetchCategoryProducts = async () => {
+    const categorySlug = CATEGORY_SLUG_MAP[category]
+    if (!categorySlug) {
+      setError(`Unknown category: ${category}`)
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetchProducts({
+        category: categorySlug,
+        search: debouncedSearch || undefined,
+        page_size: 50, // Fetch more products for the selector
+        grouped: true, // Get all retailers grouped under each product
+      })
+
+      // Transform API products to builder format
+      const transformedProducts = response.products.map(p => transformApiProduct(p, category))
+      setProducts(transformedProducts)
+    } catch (err) {
+      console.error("Error fetching products:", err)
+      setError("Failed to load products. Please try again.")
+      setProducts([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Fetch products when dialog opens
+  useEffect(() => {
+    if (open) {
+      fetchCategoryProducts()
+    } else {
+      // Reset state when dialog closes
+      setSearchQuery("")
+      setDebouncedSearch("")
+      setSelectedProduct(null)
+      setError(null)
+    }
+  }, [open, category, debouncedSearch])
+
+  // Filter products client-side for instant search feedback
   const filteredProducts = useMemo(() => {
-    return MOCK_PRODUCTS.filter(
+    if (!searchQuery) return products
+
+    return products.filter(
       (product) =>
-        product.category === category &&
-        (product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          product.brand.toLowerCase().includes(searchQuery.toLowerCase()))
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.brand.toLowerCase().includes(searchQuery.toLowerCase())
     )
-  }, [category, searchQuery])
+  }, [products, searchQuery])
 
   const handleSelectProduct = (product: Product) => {
     addProductToSlot(category, product)
     onSelect(product)
     setSelectedProduct(null)
     setSearchQuery("")
+    onOpenChange(false)
   }
 
   const getAvailabilityBadge = (availability: string) => {
@@ -312,7 +180,7 @@ export function ProductSelector({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search products..."
+            placeholder={`Search ${category.toLowerCase()}s...`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -331,16 +199,36 @@ export function ProductSelector({
 
         {/* Products List */}
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
-          {filteredProducts.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Loader2 className="h-12 w-12 text-primary animate-spin mb-3" />
+              <p className="text-muted-foreground">Loading {category}s...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Store className="h-12 w-12 text-destructive mb-3" />
+              <p className="text-destructive">{error}</p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={fetchCategoryProducts}
+              >
+                Try Again
+              </Button>
+            </div>
+          ) : filteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Store className="h-12 w-12 text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">No products found</p>
+              <p className="text-muted-foreground">No {category}s found</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Try adjusting your search
+                {searchQuery ? "Try adjusting your search" : "No products available in this category yet"}
               </p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 pb-4">
+              <p className="text-sm text-muted-foreground">
+                {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""} found
+              </p>
               {filteredProducts.map((product) => (
                 <motion.div
                   key={product.id}
@@ -360,6 +248,9 @@ export function ProductSelector({
                         src={product.image}
                         alt={product.name}
                         className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/placeholder.png"
+                        }}
                       />
                     </div>
 
@@ -369,13 +260,15 @@ export function ProductSelector({
                       <p className="text-sm text-muted-foreground">{product.brand}</p>
 
                       {/* Specifications */}
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {Object.entries(product.specifications).slice(0, 4).map(([key, value]) => (
-                          <Badge key={key} variant="outline" className="text-xs">
-                            {key}: {value}
-                          </Badge>
-                        ))}
-                      </div>
+                      {Object.keys(product.specifications).length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {Object.entries(product.specifications).slice(0, 4).map(([key, value]) => (
+                            <Badge key={key} variant="outline" className="text-xs">
+                              {key}: {value}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Price Range */}
                       <div className="mt-3 flex items-baseline gap-2">
@@ -385,6 +278,11 @@ export function ProductSelector({
                         {product.basePrice > product.minPrice && (
                           <span className="text-sm text-muted-foreground line-through">
                             ৳{product.basePrice.toLocaleString()}
+                          </span>
+                        )}
+                        {product.prices.length > 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            from {product.prices.length} retailer{product.prices.length !== 1 ? "s" : ""}
                           </span>
                         )}
                       </div>
@@ -403,7 +301,7 @@ export function ProductSelector({
                   </div>
 
                   {/* Shop Prices */}
-                  {selectedProduct?.id === product.id && (
+                  {selectedProduct?.id === product.id && product.prices.length > 0 && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
@@ -415,9 +313,9 @@ export function ProductSelector({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {product.prices
                           .sort((a, b) => a.price - b.price)
-                          .map((priceInfo) => (
+                          .map((priceInfo, index) => (
                             <div
-                              key={priceInfo.shop}
+                              key={`${priceInfo.shop}-${index}`}
                               className={cn(
                                 "flex items-center justify-between p-3 rounded-md border",
                                 priceInfo.availability === "in-stock"
@@ -434,9 +332,15 @@ export function ProductSelector({
                               <div className="flex items-center gap-2">
                                 {getAvailabilityBadge(priceInfo.availability)}
                                 {priceInfo.url && (
-                                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                                    <ExternalLink className="h-3 w-3" />
-                                  </Button>
+                                  <a
+                                    href={priceInfo.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                                      <ExternalLink className="h-3 w-3" />
+                                    </Button>
+                                  </a>
                                 )}
                               </div>
                             </div>
@@ -446,7 +350,7 @@ export function ProductSelector({
                   )}
 
                   {/* View Prices Button */}
-                  {selectedProduct?.id !== product.id && (
+                  {selectedProduct?.id !== product.id && product.prices.length > 0 && (
                     <Button
                       variant="ghost"
                       size="sm"

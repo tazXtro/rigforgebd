@@ -275,6 +275,9 @@ class ProductRepository:
         search: Optional[str] = None,
         brand: Optional[str] = None,
         sort_by: Optional[str] = None,
+        min_price: Optional[float] = None,
+        max_price: Optional[float] = None,
+        retailers: Optional[List[str]] = None,
     ) -> dict:
         """
         Retrieve products with pagination, filtering, and sorting.
@@ -289,6 +292,9 @@ class ProductRepository:
             search: Optional search term (searches name and brand)
             brand: Optional brand filter
             sort_by: Sort option (newest, name_asc, name_desc)
+            min_price: Optional minimum price filter
+            max_price: Optional maximum price filter
+            retailers: Optional list of retailer slugs to filter by
             
         Returns:
             Dict with 'products' list and 'pagination' metadata
@@ -450,6 +456,53 @@ class ProductRepository:
     def invalidate_category_counts_cache(self):
         """Invalidate the category counts cache (call after product changes)."""
         _cache.clear("category_counts")
+    
+    @retry_on_socket_error(max_retries=3, base_delay=0.1)
+    def get_available_brands(self, category_slug: Optional[str] = None) -> List[str]:
+        """
+        Get list of unique brands, optionally filtered by category.
+        
+        Args:
+            category_slug: Optional category to filter brands by
+            
+        Returns:
+            List of unique brand names sorted alphabetically
+        """
+        try:
+            query = self.client.table(self.TABLE_NAME).select("brand")
+            
+            if category_slug:
+                query = query.eq("category_slug", category_slug)
+            
+            response = query.execute()
+            
+            if not response or not response.data:
+                return []
+            
+            # Extract unique brands and filter out None/empty values
+            # Use case-insensitive deduplication to avoid duplicates like "Sparkle" and "sparkle"
+            brands_dict = {}
+            for item in response.data:
+                brand = item.get("brand")
+                if brand and brand.strip():
+                    brand_cleaned = brand.strip()
+                    brand_lower = brand_cleaned.lower()
+                    # Keep the first occurrence (or prefer capitalized version)
+                    if brand_lower not in brands_dict:
+                        brands_dict[brand_lower] = brand_cleaned
+                    elif brand_cleaned[0].isupper() and not brands_dict[brand_lower][0].isupper():
+                        # Prefer capitalized version
+                        brands_dict[brand_lower] = brand_cleaned
+            
+            # Return sorted list of unique brand names
+            return sorted(list(brands_dict.values()))
+            
+        except Exception as e:
+            logger.error(f"Failed to get available brands: {e}")
+            raise ProductRepositoryError(
+                "Failed to get available brands",
+                original_error=e
+            ) from e
     
     def create(self, product_data: dict) -> dict:
         """

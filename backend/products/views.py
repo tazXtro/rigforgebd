@@ -54,8 +54,22 @@ class ProductListView(APIView):
         page_size = params.get("page_size", 24)
         category = params.get("category")
         search = params.get("search")
-        brand = params.get("brand")
+        brand_str = params.get("brand")
         sort = params.get("sort")
+        min_price = params.get("min_price")
+        max_price = params.get("max_price")
+        retailers_str = params.get("retailers")
+        grouped = params.get("grouped", False)
+        
+        # Parse comma-separated brands
+        brands = None
+        if brand_str:
+            brands = [b.strip() for b in brand_str.split(",") if b.strip()]
+        
+        # Parse comma-separated retailers
+        retailers = None
+        if retailers_str:
+            retailers = [r.strip() for r in retailers_str.split(",") if r.strip()]
         
         # Use paginated method with server-side filtering and sorting
         result = product_service.get_products_paginated(
@@ -63,8 +77,12 @@ class ProductListView(APIView):
             page_size=page_size,
             category_slug=category,
             search=search,
-            brand=brand,
+            brands=brands,
             sort_by=sort,
+            min_price=min_price,
+            max_price=max_price,
+            retailers=retailers,
+            grouped=grouped,
         )
         
         # Serialize products
@@ -150,4 +168,21 @@ class CategoryCountsView(APIView):
         """Get product count for each category."""
         counts = product_service.get_category_counts()
         return Response(counts)
+
+
+class BrandsListView(APIView):
+    """
+    GET /api/products/brands/
+    
+    Get list of available brands, optionally filtered by category.
+    
+    Query Parameters:
+        - category: Category slug to filter brands by (optional)
+    """
+    
+    def get(self, request):
+        """Get list of available brands."""
+        category_slug = request.query_params.get("category")
+        brands = product_service.get_available_brands(category_slug)
+        return Response(brands)
 

@@ -16,7 +16,11 @@ interface BuilderContextType {
     removeSlot: (slotId: string) => void
     selectSlot: (slotId: string) => void
     setSlotQuantity: (slotId: string, quantity: number) => void
+    setSlotRetailer: (slotId: string, retailer: string) => void
     getTotalPrice: () => number
+    getMinPriceTotal: () => number
+    getBaseTotal: () => number
+    getShopTotal: (shopName: string) => number
     clearBuild: () => void
 }
 
@@ -101,10 +105,69 @@ export function BuilderProvider({ children }: { children: ReactNode }) {
         )
     }, [])
 
+    const setSlotRetailer = useCallback((slotId: string, retailer: string) => {
+        setSlots((prev) =>
+            prev.map((slot) =>
+                slot.id === slotId ? { ...slot, selectedRetailer: retailer } : slot
+            )
+        )
+    }, [])
+
     const getTotalPrice = useCallback(() => {
         return slots.reduce((total, slot) => {
             if (slot.isSelected && slot.product) {
                 return total + slot.product.minPrice * slot.quantity
+            }
+            return total
+        }, 0)
+    }, [slots])
+
+    const getMinPriceTotal = useCallback(() => {
+        return slots.reduce((total, slot) => {
+            if (slot.isSelected && slot.product) {
+                return total + slot.product.minPrice * slot.quantity
+            }
+            return total
+        }, 0)
+    }, [slots])
+
+    const getBaseTotal = useCallback(() => {
+        return slots.reduce((total, slot) => {
+            if (slot.isSelected && slot.product) {
+                // If retailer selected, use that price; otherwise use minPrice
+                if (slot.selectedRetailer) {
+                    const normalizedRetailer = slot.selectedRetailer.toLowerCase().replace(/\s+/g, '')
+                    const priceInfo = slot.product.prices.find((p) => {
+                        const normalizedPriceName = p.shop.toLowerCase().replace(/\s+/g, '')
+                        return normalizedPriceName === normalizedRetailer ||
+                               normalizedPriceName.includes(normalizedRetailer) ||
+                               normalizedRetailer.includes(normalizedPriceName)
+                    })
+                    if (priceInfo) {
+                        return total + priceInfo.price * slot.quantity
+                    }
+                }
+                return total + slot.product.minPrice * slot.quantity
+            }
+            return total
+        }, 0)
+    }, [slots])
+
+    const getShopTotal = useCallback((shopName: string) => {
+        // Normalize shop name for comparison (lowercase, remove spaces)
+        const normalizedShopName = shopName.toLowerCase().replace(/\s+/g, '')
+        
+        return slots.reduce((total, slot) => {
+            if (slot.isSelected && slot.product) {
+                const priceInfo = slot.product.prices.find((p) => {
+                    const normalizedPriceName = p.shop.toLowerCase().replace(/\s+/g, '')
+                    return normalizedPriceName === normalizedShopName || 
+                           normalizedPriceName.includes(normalizedShopName) ||
+                           normalizedShopName.includes(normalizedPriceName)
+                })
+                if (priceInfo) {
+                    return total + priceInfo.price * slot.quantity
+                }
             }
             return total
         }, 0)
@@ -123,7 +186,11 @@ export function BuilderProvider({ children }: { children: ReactNode }) {
                 removeSlot,
                 selectSlot,
                 setSlotQuantity,
+                setSlotRetailer,
                 getTotalPrice,
+                getMinPriceTotal,
+                getBaseTotal,
+                getShopTotal,
                 clearBuild,
             }}
         >
