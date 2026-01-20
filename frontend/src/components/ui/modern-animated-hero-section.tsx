@@ -1,13 +1,14 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useState, useEffect, useRef } from "react"
 
 interface Character {
     char: string
     x: number
     y: number
-    speed: number
+    duration: number // CSS animation duration instead of speed
+    delay: number    // Animation delay for staggered effect
 }
 
 class TextScramble {
@@ -23,6 +24,7 @@ class TextScramble {
     frame: number
     frameRequest: number
     resolve: (value: void | PromiseLike<void>) => void
+    isDestroyed: boolean
 
     constructor(el: HTMLElement) {
         this.el = el
@@ -31,10 +33,13 @@ class TextScramble {
         this.frame = 0
         this.frameRequest = 0
         this.resolve = () => { }
+        this.isDestroyed = false
         this.update = this.update.bind(this)
     }
 
     setText(newText: string) {
+        if (this.isDestroyed) return Promise.resolve()
+        
         const oldText = this.el.innerText
         const length = Math.max(oldText.length, newText.length)
         const promise = new Promise<void>((resolve) => this.resolve = resolve)
@@ -55,6 +60,8 @@ class TextScramble {
     }
 
     update() {
+        if (this.isDestroyed) return
+        
         let output = ''
         let complete = 0
 
@@ -84,7 +91,9 @@ class TextScramble {
     }
 
     destroy() {
+        this.isDestroyed = true
         cancelAnimationFrame(this.frameRequest)
+        this.resolve()
     }
 }
 
@@ -157,9 +166,9 @@ const ScrambledTitle: React.FC = () => {
 }
 
 const RainingLetters: React.FC = () => {
-    const [characters, setCharacters] = useState<Character[]>([])
-    const [activeIndices, setActiveIndices] = useState<Set<number>>(new Set())
     const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+    const [characters, setCharacters] = useState<Character[]>([])
+    const containerRef = useRef<HTMLDivElement>(null)
 
     // Check for reduced motion preference
     useEffect(() => {
@@ -171,10 +180,10 @@ const RainingLetters: React.FC = () => {
         return () => mediaQuery.removeEventListener('change', handler)
     }, [])
 
-    // Memoized character generation - reduced count for better performance
-    const initialCharacters = useMemo(() => {
+    // Generate characters only on client to avoid hydration mismatch
+    useEffect(() => {
         const allChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-        const charCount = 250 // Increased for denser effect
+        const charCount = 200
         const newCharacters: Character[] = []
 
         for (let i = 0; i < charCount; i++) {
@@ -182,59 +191,13 @@ const RainingLetters: React.FC = () => {
                 char: allChars[Math.floor(Math.random() * allChars.length)],
                 x: Math.random() * 100,
                 y: Math.random() * 100,
-                speed: 0.08 + Math.random() * 0.15, // Slower, smoother animation
+                duration: 4 + Math.random() * 6, // 4-10s flicker cycle
+                delay: Math.random() * -10, // Staggered start
             })
         }
 
-        return newCharacters
+        setCharacters(newCharacters)
     }, [])
-
-    useEffect(() => {
-        setCharacters(initialCharacters)
-    }, [initialCharacters])
-
-    // Flicker effect - reduced frequency for better performance
-    useEffect(() => {
-        if (prefersReducedMotion) return
-
-        const updateActiveIndices = () => {
-            const newActiveIndices = new Set<number>()
-            const numActive = Math.floor(Math.random() * 2) + 2 // 2-3 active
-            for (let i = 0; i < numActive; i++) {
-                newActiveIndices.add(Math.floor(Math.random() * characters.length))
-            }
-            setActiveIndices(newActiveIndices)
-        }
-
-        const flickerInterval = setInterval(updateActiveIndices, 100) // Reduced from 50ms
-        return () => clearInterval(flickerInterval)
-    }, [characters.length, prefersReducedMotion])
-
-    // Animation loop
-    useEffect(() => {
-        if (prefersReducedMotion) return
-
-        let animationFrameId: number
-        const allChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-        const updatePositions = () => {
-            setCharacters(prevChars =>
-                prevChars.map(char => ({
-                    ...char,
-                    y: char.y + char.speed,
-                    ...(char.y >= 100 && {
-                        y: -5,
-                        x: Math.random() * 100,
-                        char: allChars[Math.floor(Math.random() * allChars.length)],
-                    }),
-                }))
-            )
-            animationFrameId = requestAnimationFrame(updatePositions)
-        }
-
-        animationFrameId = requestAnimationFrame(updatePositions)
-        return () => cancelAnimationFrame(animationFrameId)
-    }, [prefersReducedMotion])
 
     // Static fallback for reduced motion
     if (prefersReducedMotion) {
@@ -242,25 +205,22 @@ const RainingLetters: React.FC = () => {
     }
 
     return (
-        <div className="relative w-full h-full bg-background overflow-hidden" aria-hidden="true">
+        <div 
+            ref={containerRef}
+            className="relative w-full h-full bg-background overflow-hidden" 
+            aria-hidden="true"
+        >
             {characters.map((char, index) => (
                 <span
                     key={index}
-                    className={`absolute transition-colors duration-100 select-none ${activeIndices.has(index)
-                        ? "text-primary font-bold"
-                        : "text-muted-foreground/30 font-light"
-                        }`}
+                    className="flicker-letter absolute select-none text-muted-foreground/30 font-light"
                     style={{
                         left: `${char.x}%`,
                         top: `${char.y}%`,
-                        transform: `translate(-50%, -50%) ${activeIndices.has(index) ? 'scale(1.2)' : 'scale(1)'}`,
-                        textShadow: activeIndices.has(index)
-                            ? '0 0 8px var(--primary)'
-                            : 'none',
-                        opacity: activeIndices.has(index) ? 0.9 : 0.3,
-                        transition: 'color 0.15s, transform 0.15s, text-shadow 0.15s',
-                        willChange: 'transform, top',
-                        fontSize: '1.5rem'
+                        fontSize: '1.5rem',
+                        transform: 'translate(-50%, -50%)',
+                        animationDuration: `${char.duration}s`,
+                        animationDelay: `${char.delay}s`,
                     }}
                 >
                     {char.char}
@@ -271,6 +231,40 @@ const RainingLetters: React.FC = () => {
                 .dud {
                     color: var(--primary);
                     opacity: 0.7;
+                }
+                
+                @keyframes flicker {
+                    0%, 100% {
+                        opacity: 0;
+                        transform: translate(-50%, -50%) scale(1);
+                        text-shadow: none;
+                    }
+                    44% {
+                        opacity: 0;
+                        transform: translate(-50%, -50%) scale(1);
+                        text-shadow: none;
+                    }
+                    48% {
+                        color: var(--primary);
+                        opacity: 0.7;
+                        transform: translate(-50%, -50%) scale(1.15);
+                        text-shadow: 0 0 10px var(--primary);
+                    }
+                    52% {
+                        color: var(--primary);
+                        opacity: 0.7;
+                        transform: translate(-50%, -50%) scale(1.15);
+                        text-shadow: 0 0 10px var(--primary);
+                    }
+                    56% {
+                        opacity: 0;
+                        transform: translate(-50%, -50%) scale(1);
+                        text-shadow: none;
+                    }
+                }
+                
+                .flicker-letter {
+                    animation: flicker ease-in-out infinite;
                 }
             `}</style>
         </div>

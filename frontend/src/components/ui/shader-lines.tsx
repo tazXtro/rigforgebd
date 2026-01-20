@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 
 declare global {
     interface Window {
@@ -12,6 +12,8 @@ export function ShaderAnimation() {
     const containerRef = useRef<HTMLDivElement>(null)
     const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
     const [isDark, setIsDark] = useState(true)
+    const [isVisible, setIsVisible] = useState(true)
+    const isVisibleRef = useRef(true) // Ref for animation loop access
     const sceneRef = useRef<{
         camera: any
         scene: any
@@ -19,6 +21,7 @@ export function ShaderAnimation() {
         uniforms: any
         animationId: number | null
         resizeHandler: (() => void) | null
+        isDestroyed: boolean
     }>({
         camera: null,
         scene: null,
@@ -26,7 +29,30 @@ export function ShaderAnimation() {
         uniforms: null,
         animationId: null,
         resizeHandler: null,
+        isDestroyed: false,
     })
+
+    // Keep ref in sync with state
+    useEffect(() => {
+        isVisibleRef.current = isVisible
+    }, [isVisible])
+
+    // Use Intersection Observer to pause animations when not visible
+    useEffect(() => {
+        if (!containerRef.current) return
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    setIsVisible(entry.isIntersecting)
+                })
+            },
+            { threshold: 0 }
+        )
+
+        observer.observe(containerRef.current)
+        return () => observer.disconnect()
+    }, [])
 
     // Detect theme changes
     useEffect(() => {
@@ -60,37 +86,7 @@ export function ShaderAnimation() {
         return () => mediaQuery.removeEventListener('change', handler)
     }, [])
 
-    useEffect(() => {
-        if (prefersReducedMotion) return
-
-        // Load Three.js dynamically
-        const script = document.createElement("script")
-        script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/89/three.min.js"
-        script.onload = () => {
-            if (containerRef.current && window.THREE) {
-                initThreeJS()
-            }
-        }
-        document.head.appendChild(script)
-
-        return () => {
-            // Cleanup
-            if (sceneRef.current.animationId) {
-                cancelAnimationFrame(sceneRef.current.animationId)
-            }
-            if (sceneRef.current.resizeHandler) {
-                window.removeEventListener('resize', sceneRef.current.resizeHandler)
-            }
-            if (sceneRef.current.renderer) {
-                sceneRef.current.renderer.dispose()
-            }
-            if (script.parentNode) {
-                document.head.removeChild(script)
-            }
-        }
-    }, [prefersReducedMotion])
-
-    const initThreeJS = () => {
+    const initThreeJS = useCallback(() => {
         if (!containerRef.current || !window.THREE) return
 
         const THREE = window.THREE
@@ -189,11 +185,12 @@ export function ShaderAnimation() {
 
         // Initialize renderer
         const renderer = new THREE.WebGLRenderer()
-        renderer.setPixelRatio(window.devicePixelRatio)
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)) // Limit for performance
         container.appendChild(renderer.domElement)
 
         // Handle resize
         const onWindowResize = () => {
+            if (sceneRef.current.isDestroyed) return
             const rect = container.getBoundingClientRect()
             renderer.setSize(rect.width, rect.height)
             uniforms.resolution.value.x = renderer.domElement.width
@@ -208,20 +205,61 @@ export function ShaderAnimation() {
             uniforms,
             animationId: null,
             resizeHandler: onWindowResize,
+            isDestroyed: false,
         }
 
         onWindowResize()
         window.addEventListener("resize", onWindowResize, false)
 
-        // Animation loop
+        // Animation loop with visibility check
         const animate = () => {
+            if (sceneRef.current.isDestroyed) return
+            
             sceneRef.current.animationId = requestAnimationFrame(animate)
-            uniforms.time.value += 0.05
-            renderer.render(scene, camera)
+            
+            // Only render when visible to free up the main thread during navigation
+            if (isVisibleRef.current) {
+                uniforms.time.value += 0.05
+                renderer.render(scene, camera)
+            }
         }
 
         animate()
-    }
+    }, [])
+
+    useEffect(() => {
+        if (prefersReducedMotion) return
+
+        // Load Three.js dynamically
+        const script = document.createElement("script")
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/89/three.min.js"
+        script.onload = () => {
+            if (containerRef.current && window.THREE) {
+                initThreeJS()
+            }
+        }
+        document.head.appendChild(script)
+
+        return () => {
+            // Mark as destroyed first to stop animation loop
+            sceneRef.current.isDestroyed = true
+            
+            // Cleanup
+            if (sceneRef.current.animationId) {
+                cancelAnimationFrame(sceneRef.current.animationId)
+                sceneRef.current.animationId = null
+            }
+            if (sceneRef.current.resizeHandler) {
+                window.removeEventListener('resize', sceneRef.current.resizeHandler)
+            }
+            if (sceneRef.current.renderer) {
+                sceneRef.current.renderer.dispose()
+            }
+            if (script.parentNode) {
+                document.head.removeChild(script)
+            }
+        }
+    }, [prefersReducedMotion, initThreeJS])
 
     // Static fallback for reduced motion
     if (prefersReducedMotion) {

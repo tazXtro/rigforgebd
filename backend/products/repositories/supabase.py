@@ -729,10 +729,14 @@ class PriceRepository:
     @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_by_product_ids(self, product_ids: List[str]) -> List[dict]:
         """
-        Retrieve all price records for multiple products in a single query.
+        Retrieve all price records for multiple products.
         
         This is more efficient than calling get_by_product_id for each product
         as it avoids the N+1 query problem and reduces socket pressure.
+        
+        For large lists of product IDs (>100), this batches the requests to
+        avoid exceeding Supabase's `.in_()` filter limit which causes
+        "JSON could not be generated" errors.
         
         Args:
             product_ids: List of product UUIDs
@@ -743,15 +747,25 @@ class PriceRepository:
         if not product_ids:
             return []
         
+        # Supabase has a limit on the size of the `.in_()` filter array
+        # Batch requests in chunks of 100 to avoid "Bad Request" errors
+        BATCH_SIZE = 100
+        all_results = []
+        
         try:
-            response = (
-                self.client
-                .table(self.TABLE_NAME)
-                .select("*, retailers(*)")
-                .in_("product_id", product_ids)
-                .execute()
-            )
-            return response.data if response and response.data else []
+            for i in range(0, len(product_ids), BATCH_SIZE):
+                batch = product_ids[i:i + BATCH_SIZE]
+                response = (
+                    self.client
+                    .table(self.TABLE_NAME)
+                    .select("*, retailers(*)")
+                    .in_("product_id", batch)
+                    .execute()
+                )
+                if response and response.data:
+                    all_results.extend(response.data)
+            
+            return all_results
         except Exception as e:
             logger.error(f"Failed to fetch prices for {len(product_ids)} products: {e}")
             raise ProductRepositoryError(
@@ -832,6 +846,112 @@ class PriceRepository:
             logger.error(f"Failed to upsert price by URL '{product_url}': {e}")
             raise PriceCreationError(
                 f"Failed to upsert price: {product_url}",
+                original_error=e
+            ) from e
+
+    @retry_on_socket_error(max_retries=3, base_delay=0.1)
+    def get_listings_paginated(
+        self,
+        page: int = 1,
+        page_size: int = 24,
+        category_slug: Optional[str] = None,
+        search: Optional[str] = None,
+        brand: Optional[str] = None,
+        sort_by: Optional[str] = None,
+    ) -> dict:
+        """
+        Get product listings (price records with product data) with DB-level pagination.
+        
+        This is the optimal approach for the "exploded" view where each 
+        product-retailer combination is a separate listing. Instead of 
+        fetching all products then all prices, this queries the prices 
+        table directly with product data joined.
+        
+        Args:
+            page: Page number (1-indexed)
+            page_size: Number of listings per page
+            category_slug: Optional category filter (applied to joined product)
+            search: Optional search term
+            brand: Optional brand filter
+            sort_by: Sort option (newest, name_asc, name_desc, price_asc, price_desc)
+            
+        Returns:
+            Dict with 'listings' and 'pagination' metadata
+        """
+        try:
+            offset = (page - 1) * page_size
+            
+            # Select prices with product and retailer data joined
+            select_fields = "*, products!inner(*), retailers(*)"
+            
+            # Build count query with same filters
+            count_query = self.client.table(self.TABLE_NAME).select(
+                "id, products!inner(category_slug, name, brand)", 
+                count="exact"
+            )
+            
+            # Apply filters
+            if category_slug:
+                count_query = count_query.eq("products.category_slug", category_slug)
+            if brand:
+                count_query = count_query.ilike("products.brand", f"%{brand}%")
+            if search:
+                count_query = count_query.or_(
+                    f"products.name.ilike.%{search}%,products.brand.ilike.%{search}%"
+                )
+            
+            count_response = count_query.execute()
+            total_count = count_response.count if count_response else 0
+            
+            # Build data query
+            query = self.client.table(self.TABLE_NAME).select(select_fields)
+            
+            # Apply same filters
+            if category_slug:
+                query = query.eq("products.category_slug", category_slug)
+            if brand:
+                query = query.ilike("products.brand", f"%{brand}%")
+            if search:
+                query = query.or_(
+                    f"products.name.ilike.%{search}%,products.brand.ilike.%{search}%"
+                )
+            
+            # Apply sorting
+            if sort_by == "price_asc":
+                query = query.order("price", desc=False)
+            elif sort_by == "price_desc":
+                query = query.order("price", desc=True)
+            elif sort_by == "name_asc":
+                query = query.order("name", desc=False, foreign_table="products")
+            elif sort_by == "name_desc":
+                query = query.order("name", desc=True, foreign_table="products")
+            else:
+                # Default: newest first by product created_at
+                query = query.order("created_at", desc=True, foreign_table="products")
+            
+            # Apply pagination
+            query = query.range(offset, offset + page_size - 1)
+            
+            response = query.execute()
+            listings = response.data if response and response.data else []
+            
+            total_pages = (total_count + page_size - 1) // page_size if total_count > 0 else 0
+            
+            return {
+                "listings": listings,
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total_count": total_count,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1,
+                },
+            }
+        except Exception as e:
+            logger.error(f"Failed to get paginated listings: {e}")
+            raise ProductRepositoryError(
+                "Failed to get paginated listings",
                 original_error=e
             ) from e
 
