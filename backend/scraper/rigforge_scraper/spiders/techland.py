@@ -152,13 +152,16 @@ class TechlandSpider(BaseRetailerSpider):
         """
         Parse a single product card from the listing page.
         
+        Instead of creating the item directly, this method extracts basic info
+        and follows the product URL to get detailed specifications.
+        
         Args:
             card: Scrapy selector for the product card
             category: Product category
             source_url: URL of the listing page
             
         Returns:
-            ProductItem or None if parsing fails
+            Request to product detail page, or None if parsing fails
         """
         try:
             # Extract product name - updated selectors for Techland Jan 2026
@@ -234,21 +237,88 @@ class TechlandSpider(BaseRetailerSpider):
             # Extract brand
             brand = self.extract_brand(name)
             
-            # Create product item
-            return self.create_product_item(
-                name=name,
-                price=price,
-                product_url=product_url,
-                category=category,
-                image_url=image_url,
-                brand=brand,
-                in_stock=in_stock,
-                source_page=source_url,
+            # Store item data in meta and follow to product detail page for specs
+            item_data = {
+                'name': name,
+                'price': price,
+                'product_url': product_url,
+                'category': category,
+                'image_url': image_url,
+                'brand': brand,
+                'in_stock': in_stock,
+                'source_page': source_url,
+            }
+            
+            # Follow product URL to get detailed specs (with Playwright for JS rendering)
+            return self.make_request(
+                product_url,
+                callback=self.parse_product_detail,
+                meta={'item_data': item_data},
             )
             
         except Exception as e:
             logger.error(f"Error parsing Techland product card: {e}\n{traceback.format_exc()}")
             return None
+    
+    def parse_product_detail(self, response):
+        """
+        Parse Techland product detail page to extract specifications.
+        
+        Args:
+            response: Scrapy response from product detail page
+            
+        Yields:
+            ProductItem with specifications
+        """
+        item_data = response.meta['item_data']
+        
+        specs = {}
+        
+        # Techland uses various spec containers - try multiple selectors
+        # Try specification table format
+        spec_rows = response.css('.specification-table tr, .product-specification tr, table.spec-table tr')
+        for row in spec_rows:
+            key = row.css('td:first-child::text, th::text').get()
+            value = row.css('td:last-child::text').get()
+            if key and value:
+                key = self.normalize_text(key).rstrip(':')
+                value = self.normalize_text(value)
+                if key and value:
+                    specs[key] = value
+        
+        # Try key-value list format (common in Techland)
+        if not specs:
+            spec_items = response.css('.product-spec-item, .spec-item, .product-info li')
+            for item in spec_items:
+                key = item.css('.spec-label::text, .spec-key::text, strong::text').get()
+                value = item.css('.spec-value::text, span:last-child::text').get()
+                if key and value:
+                    key = self.normalize_text(key).rstrip(':')
+                    value = self.normalize_text(value)
+                    if key and value:
+                        specs[key] = value
+        
+        # Try description tab content
+        if not specs:
+            desc_specs = response.css('#tab-description li, .product-description li')
+            for item in desc_specs:
+                text = item.css('::text').get()
+                if text and ':' in text:
+                    parts = text.split(':', 1)
+                    if len(parts) == 2:
+                        key = self.normalize_text(parts[0])
+                        value = self.normalize_text(parts[1])
+                        if key and value:
+                            specs[key] = value
+        
+        logger.debug(f"Extracted {len(specs)} specs for: {item_data['name']}")
+        
+        # Create and yield the product item with specs
+        yield self.create_product_item(
+            **item_data,
+            specs=specs,
+            specs_source_url=response.url,
+        )
     
     def follow_pagination_via_click(self, response):
         """

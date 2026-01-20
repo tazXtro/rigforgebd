@@ -186,3 +186,24 @@ class BrandsListView(APIView):
         brands = product_service.get_available_brands(category_slug)
         return Response(brands)
 
+
+class ProductBySlugView(APIView):
+    """
+    GET /api/products/by-slug/<category>/<slug>/
+    
+    Get a product by its category and slug with full details.
+    Includes specifications and all retailer prices.
+    """
+    
+    def get(self, request, category_slug, product_slug):
+        """Get product details by category and slug."""
+        product = product_service.get_product_by_slug(category_slug, product_slug)
+        
+        if not product:
+            return Response(
+                {"error": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        serializer = ProductSerializer(product)
+        return Response(serializer.data)

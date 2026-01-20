@@ -19,6 +19,7 @@ from products.repositories.supabase import (
     product_repository,
     retailer_repository,
     price_repository,
+    product_specs_repository,
 )
 from products.repositories.exceptions import (
     ProductRepositoryError,
@@ -44,10 +45,12 @@ class ProductIngestionService:
         product_repo=None,
         retailer_repo=None,
         price_repo=None,
+        specs_repo=None,
     ):
         self.product_repo = product_repo or product_repository
         self.retailer_repo = retailer_repo or retailer_repository
         self.price_repo = price_repo or price_repository
+        self.specs_repo = specs_repo or product_specs_repository
     
     def ingest_scraped_product(self, scraped_data: Dict[str, Any]) -> Optional[dict]:
         """
@@ -102,6 +105,19 @@ class ProductIngestionService:
                 scraped_data=scraped_data,
             )
             price = self.price_repo.upsert_by_url(price_data)
+            
+            # Handle specs if present
+            specs = scraped_data.get('specs', {})
+            if specs and product:
+                try:
+                    self.specs_repo.upsert(
+                        product_id=product['id'],
+                        specs=specs,
+                        source_url=scraped_data.get('specs_source_url'),
+                    )
+                    logger.debug(f"Saved specs for: {product['name']}")
+                except Exception as e:
+                    logger.warning(f"Failed to save specs for {product['name']}: {e}")
             
             logger.info(f"Successfully ingested product: {product['name']}")
             
@@ -737,6 +753,60 @@ class ProductService:
         except ProductRepositoryError as e:
             logger.error(f"Failed to get available brands: {e}")
             return []
+    
+    def get_product_by_slug(
+        self,
+        category_slug: str,
+        product_slug: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get complete product details by category and slug.
+        
+        Includes specs and all retailer prices for the product detail page.
+        
+        Args:
+            category_slug: Category slug
+            product_slug: Product slug
+            
+        Returns:
+            Product dict with specs and retailers, or None if not found
+        """
+        try:
+            # Get product by slug
+            product = self.product_repo.get_by_slug(product_slug)
+            if not product:
+                return None
+            
+            # Verify category matches
+            if product.get('category_slug') != category_slug:
+                return None
+            
+            # Get specs
+            specs_record = product_specs_repository.get_by_product_id(product['id'])
+            product['specs'] = specs_record['specs'] if specs_record else {}
+            
+            # Get all retailer prices with URLs
+            prices = self.price_repo.get_by_product_id(product['id'])
+            retailers = []
+            for price in prices:
+                retailer_info = price.get('retailers', {})
+                retailers.append({
+                    'name': retailer_info.get('name', 'Unknown'),
+                    'slug': retailer_info.get('slug', ''),
+                    'price': float(price.get('price', 0)),
+                    'inStock': price.get('in_stock', True),
+                    'url': price.get('product_url', ''),
+                })
+            
+            # Sort by price (lowest first)
+            retailers.sort(key=lambda r: r['price'])
+            product['retailers'] = retailers
+            
+            return product
+            
+        except ProductRepositoryError as e:
+            logger.error(f"Failed to get product by slug: {e}")
+            return None
 
 
 # Singleton instances

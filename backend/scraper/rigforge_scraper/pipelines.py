@@ -164,6 +164,7 @@ class SupabaseIngestionPipeline:
             "brand": adapter.get("brand"),
             "in_stock": adapter.get("in_stock", True),
             "specs": adapter.get("specs", {}),
+            "specs_source_url": adapter.get("specs_source_url"),
         }
         
         try:

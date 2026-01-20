@@ -63,13 +63,13 @@ export async function fetchProductsServer(
     if (params?.sort) searchParams.set('sort', params.sort);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.page_size) searchParams.set('page_size', String(params.page_size));
-    
+
     const query = searchParams.toString();
     const url = `${API_BASE}/products/${query ? `?${query}` : ''}`;
-    
+
     // Use shorter cache for search queries, longer for category browsing
     const hasSearch = params?.search && params.search.length > 0;
-    
+
     const response = await fetch(url, {
         next: {
             // Cache products for 30 seconds, or no-cache for search
@@ -78,11 +78,11 @@ export async function fetchProductsServer(
             tags: ['products', params?.category ? `category-${params.category}` : 'all-products'],
         },
     });
-    
+
     if (!response.ok) {
         throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}`);
     }
-    
+
     return response.json();
 }
 
@@ -100,11 +100,11 @@ export async function fetchCategoryCountsServer(): Promise<Record<string, number
             tags: ['category-counts'],
         },
     });
-    
+
     if (!response.ok) {
         throw new Error(`Failed to fetch category counts: ${response.status}`);
     }
-    
+
     return response.json();
 }
 
@@ -121,16 +121,16 @@ export async function fetchRetailersServer(): Promise<Retailer[]> {
             tags: ['retailers'],
         },
     });
-    
+
     if (!response.ok) {
         throw new Error(`Failed to fetch retailers: ${response.status}`);
     }
-    
+
     return response.json();
 }
 
 /**
- * Fetch a single product by slug
+ * Fetch a single product by slug (for listing pages - minimal data)
  */
 export async function fetchProductBySlugServer(
     categorySlug: string,
@@ -138,9 +138,44 @@ export async function fetchProductBySlugServer(
 ): Promise<Product | null> {
     // For single product, we could use a dedicated API endpoint
     // For now, fetch from category and filter
-    const { products } = await fetchProductsServer({ 
-        category: categorySlug, 
-        page_size: 100 
+    const { products } = await fetchProductsServer({
+        category: categorySlug,
+        page_size: 100
     });
     return products.find(p => p.slug === productSlug) || null;
+}
+
+/**
+ * Fetch complete product details including specs and all retailer prices
+ * 
+ * Uses the dedicated by-slug endpoint for optimal data fetching.
+ * Includes full specifications and all retailer prices with URLs.
+ */
+export async function fetchProductDetailServer(
+    categorySlug: string,
+    productSlug: string
+): Promise<Product | null> {
+    try {
+        const url = `${API_BASE}/products/by-slug/${categorySlug}/${productSlug}/`;
+
+        const response = await fetch(url, {
+            next: {
+                // Cache product details for 30 seconds
+                revalidate: 30,
+                tags: ['product-detail', `product-${productSlug}`],
+            },
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                return null;
+            }
+            throw new Error(`Failed to fetch product: ${response.status}`);
+        }
+
+        return response.json();
+    } catch (error) {
+        console.error('Error fetching product detail:', error);
+        return null;
+    }
 }

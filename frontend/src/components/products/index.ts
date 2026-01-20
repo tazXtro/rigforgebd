@@ -5,5 +5,5 @@ export { CategoryNav, categories } from "./CategoryNav"
 export { ProductFilters } from "./ProductFilters"
 export { MobileFilters } from "./MobileFilters"
 export { ProductsPageClient } from "./ProductsPageClient"
+export { ProductDetailClient } from "./ProductDetailClient"
 export { filterProducts, sortProducts } from "./mockData"
-

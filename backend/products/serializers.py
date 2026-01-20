@@ -23,6 +23,7 @@ class ProductPriceSerializer(serializers.Serializer):
     """Serializer for product price from a retailer."""
     
     name = serializers.CharField(help_text="Retailer name")
+    slug = serializers.CharField(required=False, help_text="Retailer slug")
     price = serializers.FloatField(help_text="Price in BDT")
     inStock = serializers.BooleanField(default=True)
     url = serializers.URLField(help_text="Product URL at retailer")

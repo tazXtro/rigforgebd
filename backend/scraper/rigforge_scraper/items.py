@@ -26,6 +26,7 @@ class ProductItem(scrapy.Item):
     brand = scrapy.Field()
     in_stock = scrapy.Field()
     specs = scrapy.Field()
+    specs_source_url = scrapy.Field()  # URL where specs were scraped from
     
     # Metadata (not sent to Django)
     scraped_at = scrapy.Field()

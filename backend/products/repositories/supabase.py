@@ -1031,3 +1031,154 @@ class PriceRepository:
 product_repository = ProductRepository()
 retailer_repository = RetailerRepository()
 price_repository = PriceRepository()
+
+
+class ProductSpecsRepository:
+    """
+    Repository for product specifications persistence in Supabase.
+    
+    Stores detailed product specs in JSONB format for flexible querying.
+    """
+    
+    TABLE_NAME = "product_specs"
+    _client = None
+    
+    @property
+    def client(self):
+        """Lazy-load the Supabase client on first access."""
+        if self._client is None:
+            from core.infrastructure.supabase.client import get_supabase_client
+            self._client = get_supabase_client()
+        return self._client
+    
+    def get_by_product_id(self, product_id: str) -> Optional[dict]:
+        """
+        Get specs for a product.
+        
+        Args:
+            product_id: Product UUID
+            
+        Returns:
+            Specs record dict or None if not found
+        """
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("*")
+                .eq("product_id", product_id)
+                .maybe_single()
+                .execute()
+            )
+            return response.data if response else None
+        except Exception as e:
+            logger.error(f"Failed to fetch specs for product '{product_id}': {e}")
+            raise ProductRepositoryError(
+                f"Failed to fetch specs: {product_id}",
+                original_error=e
+            ) from e
+    
+    def get_by_product_ids(self, product_ids: List[str]) -> dict:
+        """
+        Get specs for multiple products.
+        
+        Args:
+            product_ids: List of product UUIDs
+            
+        Returns:
+            Dict mapping product_id to specs dict
+        """
+        if not product_ids:
+            return {}
+        
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("product_id, specs")
+                .in_("product_id", product_ids)
+                .execute()
+            )
+            
+            if not response or not response.data:
+                return {}
+            
+            # Build mapping of product_id -> specs
+            return {
+                record["product_id"]: record.get("specs", {})
+                for record in response.data
+            }
+        except Exception as e:
+            logger.error(f"Failed to fetch specs for products: {e}")
+            raise ProductRepositoryError(
+                "Failed to fetch specs for products",
+                original_error=e
+            ) from e
+    
+    def upsert(self, product_id: str, specs: dict, source_url: str = None) -> dict:
+        """
+        Create or update specs for a product.
+        
+        Args:
+            product_id: Product UUID
+            specs: Specifications dict
+            source_url: URL where specs were scraped from
+            
+        Returns:
+            The created/updated specs record
+        """
+        try:
+            data = {
+                "product_id": product_id,
+                "specs": specs,
+                "source_url": source_url,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .upsert(data, on_conflict="product_id")
+                .execute()
+            )
+            if response and response.data:
+                logger.debug(f"Upserted specs for product: {product_id}")
+                return response.data[0]
+            raise ProductCreationError(f"Upsert returned no data for specs")
+        except ProductCreationError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to upsert specs for product '{product_id}': {e}")
+            raise ProductCreationError(
+                f"Failed to upsert specs",
+                original_error=e
+            ) from e
+    
+    def delete_by_product_id(self, product_id: str) -> bool:
+        """
+        Delete specs for a product.
+        
+        Args:
+            product_id: Product UUID
+            
+        Returns:
+            True if deleted, False if not found
+        """
+        try:
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .delete()
+                .eq("product_id", product_id)
+                .execute()
+            )
+            return response and len(response.data) > 0
+        except Exception as e:
+            logger.error(f"Failed to delete specs for product '{product_id}': {e}")
+            raise ProductRepositoryError(
+                f"Failed to delete specs: {product_id}",
+                original_error=e
+            ) from e
+
+
+# Singleton instance for specs
+product_specs_repository = ProductSpecsRepository()

@@ -276,6 +276,50 @@ class BaseRetailerSpider(scrapy.Spider):
         
         return True
     
+    def parse_specs_table(self, response, selectors: dict = None) -> dict:
+        """
+        Parse specifications from a product detail page.
+        
+        Handles common spec table formats used by Bangladeshi retailers.
+        
+        Args:
+            response: Scrapy response from product detail page
+            selectors: Optional dict with custom CSS selectors:
+                - table: CSS for spec table
+                - row: CSS for table rows
+                - key: CSS for spec key
+                - value: CSS for spec value
+        
+        Returns:
+            Dict of specification key-value pairs
+        """
+        # Default selectors that work for most BD retailers
+        default_selectors = {
+            'table': 'table.specification, .product-spec table, .specification-table, .data-table',
+            'row': 'tr',
+            'key': 'td:first-child::text, th::text',
+            'value': 'td:last-child::text, td:nth-child(2)::text',
+        }
+        selectors = {**default_selectors, **(selectors or {})}
+        
+        specs = {}
+        tables = response.css(selectors['table'])
+        
+        for table in tables:
+            rows = table.css(selectors['row'])
+            for row in rows:
+                key = row.css(selectors['key']).get()
+                value = row.css(selectors['value']).get()
+                
+                if key and value:
+                    key = self.normalize_text(key).rstrip(':')
+                    value = self.normalize_text(value)
+                    # Skip header rows and empty values
+                    if key and value and key.lower() not in ['specification', 'specifications', 'description']:
+                        specs[key] = value
+        
+        return specs
+    
     def create_product_item(
         self,
         name: str,
@@ -286,6 +330,7 @@ class BaseRetailerSpider(scrapy.Spider):
         brand: str = None,
         in_stock: bool = True,
         specs: dict = None,
+        specs_source_url: str = None,
         source_page: str = None,
     ) -> ProductItem:
         """
@@ -300,6 +345,7 @@ class BaseRetailerSpider(scrapy.Spider):
             brand: Product brand (optional, will be extracted if not provided)
             in_stock: Stock availability (optional, default True)
             specs: Product specifications dict (optional)
+            specs_source_url: URL where specs were scraped from (optional)
             source_page: URL of the page where product was found (optional)
             
         Returns:
@@ -315,5 +361,6 @@ class BaseRetailerSpider(scrapy.Spider):
             brand=brand or self.extract_brand(name),
             in_stock=in_stock,
             specs=specs or {},
+            specs_source_url=specs_source_url,
             source_page=source_page,
         )
