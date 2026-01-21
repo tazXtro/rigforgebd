@@ -319,7 +319,7 @@ export default function Navbar() {
 
                 {/* Tubelight 1: Main Navigation - Desktop */}
                 <nav className="hidden lg:block relative" aria-label="Main navigation">
-                    <div className="flex items-center gap-1 border border-border/30 backdrop-blur-lg py-1 px-1 rounded-full">
+                    <div className="flex items-center gap-1 border border-border/40 bg-background/50 backdrop-blur-md py-1 px-1 rounded-full">
                         {navLinks.map((link) => (
                             <NavLink
                                 key={link.href}
@@ -350,7 +350,7 @@ export default function Navbar() {
 
                 {/* Tubelight 2: Actions - Desktop */}
                 <div className="hidden md:block">
-                    <div className="flex items-center gap-1 border border-border/30 backdrop-blur-lg py-1 px-1 rounded-full">
+                    <div className="flex items-center gap-1 border border-border/40 bg-background/50 backdrop-blur-md py-1 px-1 rounded-full">
                         <ExpandableSearch
                             isOpen={isSearchOpen}
                             onToggle={handleToggleSearch}
@@ -416,7 +416,7 @@ export default function Navbar() {
                         <Button
                             variant="outline"
                             size="icon"
-                            className="lg:hidden border-border/30 backdrop-blur-lg"
+                            className="lg:hidden border-border/40 bg-background/50 backdrop-blur-md"
                             aria-label="Open menu"
                         >
                             <Menu className="h-5 w-5" aria-hidden="true" />

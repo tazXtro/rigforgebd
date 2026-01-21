@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import {
     ArrowLeft,
     ExternalLink,
@@ -13,10 +13,22 @@ import {
     ChevronDown,
     ChevronUp,
     Check,
-    AlertCircle
+    AlertCircle,
+    Info,
+    TrendingDown
 } from "lucide-react"
 import { Product } from "./ProductCard"
 import { cn } from "@/lib/utils"
+
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+} from "@/components/ui/card"
 
 interface ProductDetailClientProps {
     product: Product
@@ -24,8 +36,8 @@ interface ProductDetailClientProps {
 
 export function ProductDetailClient({ product }: ProductDetailClientProps) {
     const [isFavorite, setIsFavorite] = useState(false)
-    const [expandedSpecs, setExpandedSpecs] = useState(true)
     const [shareStatus, setShareStatus] = useState<'idle' | 'success' | 'error'>('idle')
+    const [specsOpen, setSpecsOpen] = useState(true)
 
     // Format price with Taka symbol
     const formatPrice = (price: number) => `৳${price.toLocaleString("en-BD")}`
@@ -36,6 +48,9 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
     const highestPrice = prices.length > 0 ? Math.max(...prices) : 0
     const lowestRetailer = product.retailers.find(r => r.price === lowestPrice)
     const savings = highestPrice - lowestPrice
+
+    // Sort retailers by price
+    const sortedRetailers = [...product.retailers].sort((a, b) => a.price - b.price);
 
     // Handle share functionality
     const handleShare = async () => {
@@ -48,7 +63,6 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                 })
                 setShareStatus('success')
             } else {
-                // Fallback: copy to clipboard
                 await navigator.clipboard.writeText(window.location.href)
                 setShareStatus('success')
             }
@@ -60,13 +74,13 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
     }
 
     return (
-        <div className="min-h-screen bg-background">
-            {/* Header with back button */}
-            <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-                <div className="container mx-auto px-4 py-4">
+        <div className="min-h-screen bg-muted/10 pb-12">
+            {/* Header / Breadcrumb */}
+            <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b">
+                <div className="container max-w-7xl mx-auto px-4 py-3">
                     <Link
                         href={`/products/${product.categorySlug}`}
-                        className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                     >
                         <ArrowLeft className="w-4 h-4" />
                         Back to {product.category}
@@ -74,221 +88,220 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                 </div>
             </div>
 
-            <main className="container mx-auto px-4 py-8">
-                <div className="grid lg:grid-cols-2 gap-12">
-                    {/* Left Column: Image */}
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="relative"
-                    >
-                        <div className="sticky top-24">
-                            <div className="relative aspect-square rounded-2xl overflow-hidden bg-muted">
-                                <img
-                                    src={product.image}
-                                    alt={product.name}
-                                    className="w-full h-full object-cover"
-                                />
-
-                                {/* Price comparison badge */}
-                                {savings > 0 && (
-                                    <div className="absolute top-4 left-4 px-3 py-1.5 bg-green-500 text-white rounded-full text-sm font-medium">
-                                        Save up to {formatPrice(savings)}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Action buttons */}
-                            <div className="mt-4 flex gap-3">
-                                <button
-                                    onClick={() => setIsFavorite(!isFavorite)}
-                                    className={cn(
-                                        "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border transition-colors",
-                                        isFavorite
-                                            ? "border-red-500 bg-red-500/10 text-red-500"
-                                            : "border-border hover:border-primary"
+            <main className="container max-w-7xl mx-auto px-4 py-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    {/* Left Column: Image & Actions (4 cols) */}
+                    <div className="lg:col-span-4 space-y-6">
+                        <div className="sticky top-24 space-y-6">
+                            <Card className="overflow-hidden border-0 shadow-lg bg-card/50 backdrop-blur-sm">
+                                <div className="relative aspect-square p-6 flex items-center justify-center bg-white dark:bg-muted/20">
+                                    <img
+                                        src={product.image}
+                                        alt={product.name}
+                                        className="w-full h-full object-contain mix-blend-multiply dark:mix-blend-normal transition-transform duration-500 hover:scale-105"
+                                    />
+                                    {savings > 0 && (
+                                        <Badge className="absolute top-4 left-4 bg-green-500 hover:bg-green-600 text-white border-0 px-3 py-1 text-sm font-medium">
+                                            Save {formatPrice(savings)}
+                                        </Badge>
                                     )}
-                                >
-                                    <Heart className={cn("w-5 h-5", isFavorite && "fill-current")} />
-                                    {isFavorite ? "Saved" : "Save"}
-                                </button>
-                                <button
+                                </div>
+                            </Card>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <Button
+                                    variant={isFavorite ? "default" : "outline"}
                                     className={cn(
-                                        "flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border transition-colors",
-                                        shareStatus === 'success' && "border-green-500 bg-green-500/10 text-green-500",
-                                        shareStatus === 'idle' && "border-border hover:border-primary"
+                                        "w-full gap-2 transition-all",
+                                        isFavorite && "bg-red-500 hover:bg-red-600 text-white border-red-500"
+                                    )}
+                                    onClick={() => setIsFavorite(!isFavorite)}
+                                >
+                                    <Heart className={cn("w-4 h-4", isFavorite && "fill-current")} />
+                                    {isFavorite ? "Saved" : "Save"}
+                                </Button>
+
+                                <Button
+                                    variant="outline"
+                                    className={cn(
+                                        "w-full gap-2 transition-all",
+                                        shareStatus === 'success' && "border-green-500 text-green-500 bg-green-50 dark:bg-green-500/10"
                                     )}
                                     onClick={handleShare}
                                 >
                                     {shareStatus === 'success' ? (
                                         <>
-                                            <Check className="w-5 h-5" />
-                                            Copied!
+                                            <Check className="w-4 h-4" /> Copied
                                         </>
                                     ) : (
                                         <>
-                                            <Share2 className="w-5 h-5" />
-                                            Share
+                                            <Share2 className="w-4 h-4" /> Share
                                         </>
                                     )}
-                                </button>
+                                </Button>
                             </div>
                         </div>
-                    </motion.div>
+                    </div>
 
-                    {/* Right Column: Details */}
-                    <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="space-y-8"
-                    >
-                        {/* Product Info */}
-                        <div>
-                            <p className="text-sm text-muted-foreground mb-2">{product.brand}</p>
-                            <h1 className="text-3xl font-bold text-foreground mb-4">
-                                {product.name}
-                            </h1>
-
-                            {/* Best Price Highlight */}
-                            <div className="p-6 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
-                                <p className="text-sm text-muted-foreground mb-1">Best Price</p>
-                                <p className="text-4xl font-bold text-primary">
-                                    {formatPrice(lowestPrice)}
-                                </p>
-                                {lowestRetailer && (
-                                    <p className="text-sm text-muted-foreground mt-2">
-                                        at {lowestRetailer.name}
-                                    </p>
-                                )}
+                    {/* Right Column: Details (8 cols) */}
+                    <div className="lg:col-span-8 space-y-6">
+                        {/* Title & Price Header */}
+                        <div className="space-y-4">
+                            <div>
+                                <h2 className="text-sm font-medium text-primary mb-1 tracking-wide uppercase">{product.brand}</h2>
+                                <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
+                                    {product.name}
+                                </h1>
                             </div>
+
+                            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background">
+                                <CardContent className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                                    <div>
+                                        <p className="text-sm text-muted-foreground font-medium mb-1">Best Market Price</p>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-4xl font-bold text-primary">
+                                                {formatPrice(lowestPrice)}
+                                            </span>
+                                            {highestPrice > lowestPrice && (
+                                                <span className="text-lg text-muted-foreground line-through decoration-red-500/50">
+                                                    {formatPrice(highestPrice)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {lowestRetailer && (
+                                            <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
+                                                <TrendingDown className="w-4 h-4 text-green-500" />
+                                                Lowest price at <span className="font-semibold text-foreground">{lowestRetailer.name}</span>
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2">
+                                        <Badge variant="outline" className="px-3 py-1 bg-background">
+                                            {product.retailers.length} Sellers
+                                        </Badge>
+                                        <Badge variant={lowestRetailer?.inStock ? "default" : "destructive"} className="px-3 py-1">
+                                            {lowestRetailer?.inStock ? "In Stock" : "Out of Stock"}
+                                        </Badge>
+                                    </div>
+                                </CardContent>
+                            </Card>
                         </div>
 
-                        {/* Retailers Section */}
-                        <div>
-                            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                                <Store className="w-5 h-5" />
-                                Available at {product.retailers.length} Retailer{product.retailers.length > 1 ? 's' : ''}
-                            </h2>
-
-                            <div className="space-y-3">
-                                {product.retailers
-                                    .sort((a, b) => a.price - b.price)
-                                    .map((retailer, idx) => (
-                                        <motion.div
+                        {/* Retailers List */}
+                        <Card>
+                            <CardHeader className="pb-3 border-b">
+                                <CardTitle className="flex items-center gap-2 text-lg">
+                                    <Store className="w-5 h-5 text-muted-foreground" />
+                                    Available Retailers
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <div className="divide-y">
+                                    {sortedRetailers.map((retailer, idx) => (
+                                        <div
                                             key={idx}
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: idx * 0.1 }}
                                             className={cn(
-                                                "flex items-center justify-between p-4 rounded-xl border transition-all",
-                                                idx === 0
-                                                    ? "border-primary/50 bg-primary/5"
-                                                    : "border-border hover:border-primary/30"
+                                                "p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/30 transition-colors",
+                                                idx === 0 && "bg-primary/5"
                                             )}
                                         >
-                                            <div className="flex items-center gap-4">
-                                                {idx === 0 && (
-                                                    <span className="px-2 py-1 text-xs font-medium bg-primary text-primary-foreground rounded">
-                                                        Best Price
-                                                    </span>
-                                                )}
-                                                <div>
-                                                    <p className="font-medium">{retailer.name}</p>
-                                                    <p className={cn(
-                                                        "text-sm flex items-center gap-1",
-                                                        retailer.inStock ? "text-green-600" : "text-red-500"
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="font-semibold text-base truncate">{retailer.name}</span>
+                                                    {idx === 0 && (
+                                                        <Badge variant="secondary" className="text-[10px] px-1.5 h-5 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20">
+                                                            Best Price
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-3 text-sm">
+                                                    <span className={cn(
+                                                        "flex items-center gap-1.5 font-medium",
+                                                        retailer.inStock ? "text-green-600 dark:text-green-500" : "text-red-500"
                                                     )}>
-                                                        {retailer.inStock ? (
-                                                            <><Package className="w-3 h-3" /> In Stock</>
-                                                        ) : (
-                                                            <><AlertCircle className="w-3 h-3" /> Out of Stock</>
-                                                        )}
-                                                    </p>
+                                                        {retailer.inStock ? <Package className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                                                        {retailer.inStock ? "In Stock" : "Out of Stock"}
+                                                    </span>
                                                 </div>
                                             </div>
 
-                                            <div className="flex items-center gap-4">
+                                            <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
                                                 <div className="text-right">
-                                                    <p className="text-xl font-bold">
-                                                        {formatPrice(retailer.price)}
-                                                    </p>
+                                                    <div className="font-bold text-lg">{formatPrice(retailer.price)}</div>
                                                     {idx > 0 && retailer.price > lowestPrice && (
-                                                        <p className="text-xs text-muted-foreground">
+                                                        <div className="text-xs text-muted-foreground">
                                                             +{formatPrice(retailer.price - lowestPrice)}
-                                                        </p>
+                                                        </div>
                                                     )}
                                                 </div>
-
-                                                <a
-                                                    href={retailer.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className={cn(
-                                                        "flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium transition-colors",
-                                                        retailer.inStock
-                                                            ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                                                            : "bg-muted text-muted-foreground cursor-not-allowed"
-                                                    )}
+                                                <Button
+                                                    asChild
+                                                    size="sm"
+                                                    variant={retailer.inStock ? "default" : "secondary"}
+                                                    className={cn("w-28", !retailer.inStock && "opacity-70")}
                                                 >
-                                                    {retailer.inStock ? "Buy Now" : "View"}
-                                                    <ExternalLink className="w-4 h-4" />
-                                                </a>
+                                                    <a href={retailer.url} target="_blank" rel="noopener noreferrer">
+                                                        {retailer.inStock ? "Buy Now" : "Check"} <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+                                                    </a>
+                                                </Button>
                                             </div>
-                                        </motion.div>
+                                        </div>
                                     ))}
-                            </div>
-                        </div>
+                                </div>
+                            </CardContent>
+                        </Card>
 
-                        {/* Specifications Section */}
-                        {product.specs && Object.keys(product.specs).length > 0 && (
-                            <div className="border border-border rounded-2xl overflow-hidden">
-                                <button
-                                    onClick={() => setExpandedSpecs(!expandedSpecs)}
-                                    className="w-full flex items-center justify-between p-4 bg-muted/50 hover:bg-muted transition-colors"
+                        {/* Specifications */}
+                        {product.specs && Object.keys(product.specs).length > 0 ? (
+                            <Card className="overflow-hidden">
+                                <div
+                                    className="p-4 flex items-center justify-between cursor-pointer hover:bg-muted/50 transition-colors border-b"
+                                    onClick={() => setSpecsOpen(!specsOpen)}
                                 >
-                                    <h2 className="text-xl font-semibold">Specifications</h2>
-                                    {expandedSpecs ? (
-                                        <ChevronUp className="w-5 h-5" />
-                                    ) : (
-                                        <ChevronDown className="w-5 h-5" />
-                                    )}
-                                </button>
+                                    <div className="flex items-center gap-2 font-semibold text-lg">
+                                        <Info className="w-5 h-5 text-muted-foreground" />
+                                        Technical Specifications
+                                    </div>
+                                    <Button variant="ghost" size="sm" className="w-9 h-9 p-0 rounded-full">
+                                        {specsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                    </Button>
+                                </div>
 
-                                {expandedSpecs && (
-                                    <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: "auto", opacity: 1 }}
-                                        className="p-4"
-                                    >
-                                        <dl className="divide-y divide-border">
-                                            {Object.entries(product.specs).map(([key, value]) => (
-                                                <div
-                                                    key={key}
-                                                    className="flex justify-between py-3 gap-4"
-                                                >
-                                                    <dt className="text-muted-foreground flex-shrink-0">
-                                                        {key}
-                                                    </dt>
-                                                    <dd className="font-medium text-right">
-                                                        {value}
-                                                    </dd>
+                                <AnimatePresence initial={false}>
+                                    {specsOpen && (
+                                        <motion.div
+                                            initial={{ height: 0, opacity: 0 }}
+                                            animate={{ height: "auto", opacity: 1 }}
+                                            exit={{ height: 0, opacity: 0 }}
+                                            transition={{ duration: 0.2 }}
+                                        >
+                                            <CardContent className="p-0">
+                                                <div className="grid grid-cols-1 divide-y">
+                                                    {Object.entries(product.specs).map(([key, value], i) => (
+                                                        <div key={key} className="grid grid-cols-3 p-4 gap-4 hover:bg-muted/20">
+                                                            <div className="col-span-1 text-sm font-medium text-muted-foreground">
+                                                                {key}
+                                                            </div>
+                                                            <div className="col-span-2 text-sm font-medium text-foreground">
+                                                                {value}
+                                                            </div>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                            ))}
-                                        </dl>
-                                    </motion.div>
-                                )}
-                            </div>
+                                            </CardContent>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </Card>
+                        ) : (
+                            <Card className="bg-muted/30 border-dashed">
+                                <CardContent className="h-32 flex flex-col items-center justify-center text-muted-foreground">
+                                    <Info className="w-8 h-8 mb-2 opacity-20" />
+                                    <p>Specifications not available</p>
+                                </CardContent>
+                            </Card>
                         )}
-
-                        {/* No specs message */}
-                        {(!product.specs || Object.keys(product.specs).length === 0) && (
-                            <div className="p-6 bg-muted/30 rounded-2xl text-center">
-                                <p className="text-muted-foreground">
-                                    Specifications not yet available for this product.
-                                </p>
-                            </div>
-                        )}
-                    </motion.div>
+                    </div>
                 </div>
             </main>
         </div>
