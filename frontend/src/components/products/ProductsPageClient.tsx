@@ -13,6 +13,8 @@ import {
     AlertCircle,
     ChevronLeft,
     ChevronRight,
+    X,
+    Wrench,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
@@ -85,6 +87,14 @@ export function ProductsPageClient({
 
     // Track if we need client-side fetch (after initial server render)
     const [needsClientFetch, setNeedsClientFetch] = useState(false)
+
+    // Check if user navigated from system builder
+    const isFromBuilder = searchParams.get("source") === "builder"
+
+    // Handle cancel selection - return to builder
+    const handleCancelSelection = useCallback(() => {
+        router.push("/builder")
+    }, [router])
 
     // Debounce search input to avoid too many API calls
     useEffect(() => {
@@ -234,6 +244,36 @@ export function ProductsPageClient({
 
     return (
         <div className="container py-8">
+            {/* Selection Mode Banner - shown when navigating from builder */}
+            {isFromBuilder && (
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-6 p-4 bg-primary/10 border border-primary/30 rounded-xl flex items-center justify-between gap-4"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/20 rounded-lg">
+                            <Wrench className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                            <p className="font-semibold text-foreground">
+                                Select a {getCategoryTitle().replace(/s$/, '')} for your build
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                                Click the <span className="font-medium text-primary">Add</span> button on any product to add it to your PC build
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleCancelSelection}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground bg-background border border-border/50 rounded-lg hover:border-border transition-colors"
+                    >
+                        <X className="w-4 h-4" />
+                        <span className="hidden sm:inline">Cancel</span>
+                    </button>
+                </motion.div>
+            )}
+
             {/* Page Header */}
             <div className="mb-8">
                 <motion.div

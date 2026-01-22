@@ -1,5 +1,5 @@
 import { Metadata } from "next"
-import { BuilderProvider, PCBuilder } from "@/components/builder"
+import { PCBuilder } from "@/components/builder"
 import Navbar from "@/components/Navbar"
 
 export const metadata: Metadata = {
@@ -10,11 +10,11 @@ export const metadata: Metadata = {
 
 export default function BuilderPage() {
     return (
-        <BuilderProvider>
+        <>
             <Navbar />
             <main className="min-h-screen bg-background">
                 <PCBuilder />
             </main>
-        </BuilderProvider>
+        </>
     )
 }

@@ -1,14 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Plus, ChevronDown, Trash2, Check, Minus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ComponentConfig } from "./types"
 import { useBuilder } from "./BuilderContext"
 import { SHOPS } from "./constants"
-import { ProductSelector } from "./ProductSelector"
+import { getProductCategorySlug } from "./categoryMapping"
 import { cn } from "@/lib/utils"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,28 +23,30 @@ interface ComponentRowProps {
 }
 
 export function ComponentRow({ config, index }: ComponentRowProps) {
-  const { getSlotsForCategory, removeSlot, selectSlot, setSlotQuantity, setSlotRetailer } = useBuilder()
-  const [showProductSelector, setShowProductSelector] = useState(false)
+  const router = useRouter()
+  const { getSlotsForCategory, removeSlot, selectSlot, setSlotQuantity, setSlotRetailer, selectedRetailers } = useBuilder()
   const slots = getSlotsForCategory(config.category)
   const selectedSlot = slots.find((s) => s.isSelected)
 
   const handleOpenSelector = () => {
-    setShowProductSelector(true)
+    // Navigate to products page with source=builder to indicate selection mode
+    const categorySlug = getProductCategorySlug(config.category)
+    router.push(`/products/${categorySlug}?source=builder`)
   }
 
   // Calculate shop prices for selected product
   // Uses flexible matching to handle name variations (e.g., "Techland" vs "Tech Land")
   const getShopPrice = (shopName: string) => {
     if (!selectedSlot?.product) return null
-    
+
     // Normalize shop name for comparison (lowercase, remove spaces)
     const normalizedShopName = shopName.toLowerCase().replace(/\s+/g, '')
-    
+
     const priceInfo = selectedSlot.product.prices.find((p) => {
       const normalizedPriceName = p.shop.toLowerCase().replace(/\s+/g, '')
-      return normalizedPriceName === normalizedShopName || 
-             normalizedPriceName.includes(normalizedShopName) ||
-             normalizedShopName.includes(normalizedPriceName)
+      return normalizedPriceName === normalizedShopName ||
+        normalizedPriceName.includes(normalizedShopName) ||
+        normalizedShopName.includes(normalizedPriceName)
     })
     return priceInfo?.price
   }
@@ -51,14 +54,14 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
   // Get the base price (from selected retailer, or minPrice if none selected)
   const getBasePrice = () => {
     if (!selectedSlot?.product) return null
-    
+
     if (selectedSlot.selectedRetailer) {
       const normalizedRetailer = selectedSlot.selectedRetailer.toLowerCase().replace(/\s+/g, '')
       const priceInfo = selectedSlot.product.prices.find((p) => {
         const normalizedPriceName = p.shop.toLowerCase().replace(/\s+/g, '')
         return normalizedPriceName === normalizedRetailer ||
-               normalizedPriceName.includes(normalizedRetailer) ||
-               normalizedRetailer.includes(normalizedPriceName)
+          normalizedPriceName.includes(normalizedRetailer) ||
+          normalizedRetailer.includes(normalizedPriceName)
       })
       if (priceInfo) {
         return priceInfo.price
@@ -70,17 +73,17 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
   // Get the minimum price and the retailer offering it
   const getMinPriceInfo = () => {
     if (!selectedSlot?.product) return null
-    
+
     let minPrice = Infinity
     let minRetailer = ''
-    
+
     for (const priceInfo of selectedSlot.product.prices) {
       if (priceInfo.price < minPrice) {
         minPrice = priceInfo.price
         minRetailer = priceInfo.shop
       }
     }
-    
+
     return minPrice < Infinity ? { price: minPrice, retailer: minRetailer } : null
   }
 
@@ -90,8 +93,8 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
     const normalizedShopName = shopName.toLowerCase().replace(/\s+/g, '')
     const normalizedSelected = selectedSlot.selectedRetailer.toLowerCase().replace(/\s+/g, '')
     return normalizedShopName === normalizedSelected ||
-           normalizedShopName.includes(normalizedSelected) ||
-           normalizedSelected.includes(normalizedShopName)
+      normalizedShopName.includes(normalizedSelected) ||
+      normalizedSelected.includes(normalizedShopName)
   }
 
   return (
@@ -125,24 +128,46 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 justify-between gap-2 max-w-[280px]"
+                      className="flex-1 justify-between gap-2 max-w-[320px] h-auto py-2"
                     >
-                      <span className="truncate text-left flex-1">
-                        {selectedSlot.product?.name}
-                      </span>
-                      <Badge variant="secondary" className="ml-2">{slots.length}</Badge>
-                      <ChevronDown className="h-3 w-3" />
+                      <div className="flex items-center gap-2">
+                        {selectedSlot.product?.image && (
+                          <div className="w-8 h-8 rounded overflow-hidden bg-muted flex-shrink-0">
+                            <img
+                              src={selectedSlot.product.image}
+                              alt={selectedSlot.product.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        <span className="text-left leading-tight line-clamp-2">
+                          {selectedSlot.product?.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Badge variant="secondary">{slots.length}</Badge>
+                        <ChevronDown className="h-3 w-3" />
+                      </div>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-[280px]">
+                  <DropdownMenuContent align="start" className="w-[320px]">
                     {slots.map((slot) => (
                       <DropdownMenuItem
                         key={slot.id}
                         onClick={() => selectSlot(slot.id)}
-                        className="flex items-center justify-between"
+                        className="flex items-center gap-2 py-2"
                       >
-                        <span className="truncate flex-1">{slot.product?.name}</span>
-                        {slot.isSelected && <Check className="h-4 w-4 text-primary" />}
+                        {slot.product?.image && (
+                          <div className="w-8 h-8 rounded overflow-hidden bg-muted flex-shrink-0">
+                            <img
+                              src={slot.product.image}
+                              alt={slot.product.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        )}
+                        <span className="flex-1 leading-tight line-clamp-2">{slot.product?.name}</span>
+                        {slot.isSelected && <Check className="h-4 w-4 text-primary flex-shrink-0" />}
                       </DropdownMenuItem>
                     ))}
                     {slots.length < config.maxSlots && (
@@ -159,15 +184,29 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <div className="flex items-center gap-2 flex-1">
-                  <span className="text-sm text-foreground truncate max-w-[200px]">
+                <div className="flex items-center gap-3 flex-1">
+                  {/* Product Image */}
+                  {selectedSlot.product?.image && (
+                    <div className="w-10 h-10 rounded-md overflow-hidden bg-muted flex-shrink-0">
+                      <img
+                        src={selectedSlot.product.image}
+                        alt={selectedSlot.product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/placeholder.png"
+                        }}
+                      />
+                    </div>
+                  )}
+                  {/* Product Name - full title with wrap */}
+                  <span className="text-sm text-foreground leading-tight max-w-[250px]">
                     {selectedSlot.product?.name}
                   </span>
                   {slots.length < config.maxSlots && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 px-2"
+                      className="h-7 px-2 flex-shrink-0"
                       onClick={handleOpenSelector}
                     >
                       <Plus className="h-3 w-3" />
@@ -269,41 +308,55 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
         </td>
 
         {/* Shop Price Columns */}
-        {SHOPS.map((shop) => {
-          const price = getShopPrice(shop.name)
-          const isSelected = isSelectedRetailer(shop.name)
-          return (
-            <td key={shop.name} className="p-4 text-center">
-              {price && selectedSlot ? (
-                <Button
-                  variant={isSelected ? "default" : "ghost"}
-                  size="sm"
-                  className={cn(
-                    "h-auto py-1 px-2",
-                    isSelected
-                      ? "bg-blue-500 hover:bg-blue-600 text-white"
-                      : price === selectedSlot.product?.minPrice
-                        ? "text-green-600 dark:text-green-400 font-semibold hover:bg-green-50 dark:hover:bg-green-900/20"
-                        : "text-foreground hover:bg-muted"
-                  )}
-                  onClick={() => setSlotRetailer(selectedSlot.id, shop.name)}
+        <AnimatePresence mode="popLayout">
+          {SHOPS.map((shop) => {
+            if (!selectedRetailers.includes(shop.name)) return null
+            const price = getShopPrice(shop.name)
+            const isSelected = isSelectedRetailer(shop.name)
+            return (
+              <motion.td
+                key={shop.name}
+                layout
+                initial={{ opacity: 0, scaleX: 0 }}
+                animate={{ opacity: 1, scaleX: 1 }}
+                exit={{ opacity: 0, scaleX: 0 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                style={{ transformOrigin: "left" }}
+                className="text-center p-4 whitespace-nowrap"
+              >
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="w-full flex justify-center"
                 >
-                  ৳{(price * selectedSlot.quantity).toLocaleString()}
-                </Button>
-              ) : (
-                <span className="text-sm text-muted-foreground">N/A</span>
-              )}
-            </td>
-          )
-        })}
+                  {price && selectedSlot ? (
+                    <Button
+                      variant={isSelected ? "default" : "ghost"}
+                      size="sm"
+                      className={cn(
+                        "h-auto py-1 px-2",
+                        isSelected
+                          ? "bg-blue-500 hover:bg-blue-600 text-white"
+                          : price === selectedSlot.product?.minPrice
+                            ? "text-green-600 dark:text-green-400 font-semibold hover:bg-green-50 dark:hover:bg-green-900/20"
+                            : "text-foreground hover:bg-muted"
+                      )}
+                      onClick={() => setSlotRetailer(selectedSlot.id, shop.name)}
+                    >
+                      ৳{(price * selectedSlot.quantity).toLocaleString()}
+                    </Button>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">N/A</span>
+                  )}
+                </motion.div>
+              </motion.td>
+            )
+          })}
+        </AnimatePresence>
       </tr>
-
-      <ProductSelector
-        open={showProductSelector}
-        onOpenChange={setShowProductSelector}
-        category={config.category}
-        onSelect={() => setShowProductSelector(false)}
-      />
     </>
   )
 }
+

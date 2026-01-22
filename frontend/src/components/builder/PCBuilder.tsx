@@ -1,15 +1,17 @@
 "use client"
 
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import { ComponentRow } from "./ComponentRow"
-import { RefreshCw, Share2, ShoppingCart } from "lucide-react"
+import { RetailerSelector } from "./RetailerSelector"
+import { RefreshCw, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useBuilder } from "./BuilderContext"
 import { COMPONENT_CONFIGS, SHOPS } from "./constants"
 import { Badge } from "@/components/ui/badge"
+import { generateBuildPDF } from "./generateBuildPDF"
 
 export function PCBuilder() {
-  const { getTotalPrice, clearBuild, slots, getMinPriceTotal, getBaseTotal, getShopTotal } = useBuilder()
+  const { getTotalPrice, clearBuild, slots, getMinPriceTotal, getBaseTotal, getShopTotal, selectedRetailers } = useBuilder()
   const totalPrice = getTotalPrice()
   const minPriceTotal = getMinPriceTotal()
   const baseTotal = getBaseTotal()
@@ -51,24 +53,18 @@ export function PCBuilder() {
             Clear Build
           </Button>
           <Button
-            variant="outline"
             size="sm"
             disabled={selectedSlots.length === 0}
             className="gap-2"
+            onClick={() => generateBuildPDF({ slots, baseTotal, minPriceTotal })}
           >
-            <Share2 className="h-4 w-4" />
-            Share
-          </Button>
-          <Button
-            size="sm"
-            disabled={selectedSlots.length === 0}
-            className="gap-2"
-          >
-            <ShoppingCart className="h-4 w-4" />
-            Buy Parts
+            <Download className="h-4 w-4" />
+            Download PDF
           </Button>
         </div>
       </motion.div>
+
+      <RetailerSelector />
 
       {/* Table */}
       <motion.div
@@ -103,22 +99,41 @@ export function PCBuilder() {
                     Lowest
                   </div>
                 </th>
-                {SHOPS.map((shop) => (
-                  <th
-                    key={shop.name}
-                    className="text-center p-4 font-semibold text-sm min-w-[100px]"
-                  >
-                    <Badge variant="outline" className="font-normal">
-                      {shop.name === "Startech" ? "ST" :
-                        shop.name === "Techland" ? "TL" :
-                          shop.name === "Potaka IT" ? "PI" :
-                            shop.name === "Skyland" ? "SK" : "UT"}
-                    </Badge>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {shop.name}
-                    </div>
-                  </th>
-                ))}
+                <AnimatePresence mode="popLayout">
+                  {SHOPS.map((shop) => {
+                    if (!selectedRetailers.includes(shop.name)) return null
+                    return (
+                      <motion.th
+                        key={shop.name}
+                        layout
+                        initial={{ opacity: 0, scaleX: 0 }}
+                        animate={{ opacity: 1, scaleX: 1 }}
+                        exit={{ opacity: 0, scaleX: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        style={{ transformOrigin: "left" }}
+                        className="text-center p-4 font-semibold text-sm min-w-[100px] whitespace-nowrap"
+                      >
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                          className="flex flex-col items-center justify-center w-full"
+                        >
+                          <Badge variant="outline" className="font-normal">
+                            {shop.name === "Startech" ? "ST" :
+                              shop.name === "Techland" ? "TL" :
+                                shop.name === "Potaka IT" ? "PI" :
+                                  shop.name === "Skyland" ? "SK" : "UT"}
+                          </Badge>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {shop.name}
+                          </div>
+                        </motion.div>
+                      </motion.th>
+                    )
+                  })}
+                </AnimatePresence>
               </tr>
             </thead>
             <tbody>
@@ -141,14 +156,33 @@ export function PCBuilder() {
                 <td className="text-center p-4 font-bold text-lg text-green-600 dark:text-green-400">
                   ৳{minPriceTotal > 0 ? minPriceTotal.toLocaleString() : 'N/A'}
                 </td>
-                {SHOPS.map((shop) => {
-                  const shopTotal = getShopTotal(shop.name)
-                  return (
-                    <td key={shop.name} className="text-center p-4 text-foreground font-medium">
-                      {shopTotal > 0 ? `৳${shopTotal.toLocaleString()}` : 'N/A'}
-                    </td>
-                  )
-                })}
+                <AnimatePresence mode="popLayout">
+                  {SHOPS.map((shop) => {
+                    if (!selectedRetailers.includes(shop.name)) return null
+                    const shopTotal = getShopTotal(shop.name)
+                    return (
+                      <motion.td
+                        key={shop.name}
+                        layout
+                        initial={{ opacity: 0, scaleX: 0 }}
+                        animate={{ opacity: 1, scaleX: 1 }}
+                        exit={{ opacity: 0, scaleX: 0 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        style={{ transformOrigin: "left" }}
+                        className="text-center p-4 text-foreground font-medium whitespace-nowrap"
+                      >
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          {shopTotal > 0 ? `৳${shopTotal.toLocaleString()}` : 'N/A'}
+                        </motion.div>
+                      </motion.td>
+                    )
+                  })}
+                </AnimatePresence>
               </tr>
             </tbody>
           </table>

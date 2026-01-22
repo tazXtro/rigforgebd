@@ -7,3 +7,5 @@ export { MobileFilters } from "./MobileFilters"
 export { ProductsPageClient } from "./ProductsPageClient"
 export { ProductDetailClient } from "./ProductDetailClient"
 export { filterProducts, sortProducts } from "./mockData"
+export { AddToBuildButton } from "./AddToBuildButton"
+
