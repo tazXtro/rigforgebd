@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Search, ExternalLink, Check, Store, X, Loader2 } from "lucide-react"
+import { Search, ExternalLink, Check, Store, X, Loader2, AlertTriangle, Shield } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,7 @@ import { Separator } from "@/components/ui/separator"
 import { ComponentCategory, Product, ShopPrice } from "./types"
 import { useBuilder } from "./BuilderContext"
 import { cn } from "@/lib/utils"
-import { fetchProducts } from "@/lib/productsApi"
+import { fetchProducts, fetchCompatibleMotherboards, fetchCompatibleRAM } from "@/lib/productsApi"
 import { Product as ApiProduct } from "@/components/products/ProductCard"
 
 interface ProductSelectorProps {
@@ -74,13 +74,20 @@ export function ProductSelector({
   category,
   onSelect,
 }: ProductSelectorProps) {
-  const { addProductToSlot } = useBuilder()
+  const { addProductToSlot, getSelectedCPU, getSelectedMotherboard } = useBuilder()
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Compatibility state
+  const [compatibleIds, setCompatibleIds] = useState<Set<string> | null>(null)
+  const [unknownIds, setUnknownIds] = useState<Set<string>>(new Set())
+  const [compatMode, setCompatMode] = useState<'strict' | 'lenient'>('strict')
+  const [isLoadingCompat, setIsLoadingCompat] = useState(false)
+  const [compatInfo, setCompatInfo] = useState<string | null>(null)
 
   // Debounce search input
   useEffect(() => {
@@ -131,19 +138,106 @@ export function ProductSelector({
       setDebouncedSearch("")
       setSelectedProduct(null)
       setError(null)
+      setCompatibleIds(null)
+      setUnknownIds(new Set())
+      setCompatInfo(null)
     }
   }, [open, category, debouncedSearch])
 
+  // Fetch compatible IDs when selecting Motherboard or RAM
+  useEffect(() => {
+    const fetchCompatibility = async () => {
+      if (category === 'Motherboard') {
+        const cpu = getSelectedCPU()
+        if (cpu) {
+          setIsLoadingCompat(true)
+          try {
+            const compat = await fetchCompatibleMotherboards(cpu.id, compatMode)
+            const allCompat = new Set(compat.compatible)
+            const allUnknown = new Set(compat.unknown)
+            setCompatibleIds(allCompat)
+            setUnknownIds(allUnknown)
+            if (compat.cpu?.socket) {
+              setCompatInfo(`Showing motherboards compatible with ${compat.cpu.socket} socket`)
+            }
+          } catch (err) {
+            console.error('Error fetching compatibility:', err)
+            setCompatibleIds(null)
+          } finally {
+            setIsLoadingCompat(false)
+          }
+        } else {
+          setCompatibleIds(null)
+          setCompatInfo('Select a CPU first to see compatible motherboards')
+        }
+      } else if (category === 'RAM') {
+        const mobo = getSelectedMotherboard()
+        if (mobo) {
+          setIsLoadingCompat(true)
+          try {
+            const compat = await fetchCompatibleRAM(mobo.id, compatMode)
+            const allCompat = new Set(compat.compatible)
+            const allUnknown = new Set(compat.unknown)
+            setCompatibleIds(allCompat)
+            setUnknownIds(allUnknown)
+            if (compat.motherboard?.memory_type) {
+              setCompatInfo(`Showing ${compat.motherboard.memory_type} RAM compatible with your motherboard`)
+            }
+          } catch (err) {
+            console.error('Error fetching compatibility:', err)
+            setCompatibleIds(null)
+          } finally {
+            setIsLoadingCompat(false)
+          }
+        } else {
+          setCompatibleIds(null)
+          setCompatInfo('Select a motherboard first to see compatible RAM')
+        }
+      } else {
+        setCompatibleIds(null)
+        setUnknownIds(new Set())
+        setCompatInfo(null)
+      }
+    }
+
+    if (open) {
+      fetchCompatibility()
+    }
+  }, [open, category, compatMode, getSelectedCPU, getSelectedMotherboard])
+
   // Filter products client-side for instant search feedback
   const filteredProducts = useMemo(() => {
-    if (!searchQuery) return products
+    let result = products
 
-    return products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.brand.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    // Apply search filter
+    if (searchQuery) {
+      result = result.filter(
+        (product) =>
+          product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          product.brand.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    }
+
+    return result
   }, [products, searchQuery])
+
+  // Apply compatibility filter
+  const compatFilteredProducts = useMemo(() => {
+    if (!compatibleIds) return filteredProducts // No filter if no compatibility data
+
+    if (compatMode === 'lenient') {
+      // In lenient mode, show compatible + unknown products
+      return filteredProducts.filter(
+        (p) => compatibleIds.has(p.id) || unknownIds.has(p.id)
+      )
+    }
+
+    // In strict mode, show only compatible products
+    return filteredProducts.filter((p) => compatibleIds.has(p.id))
+  }, [filteredProducts, compatibleIds, unknownIds, compatMode])
+
+  // Check if a product has unknown compatibility
+  const isUnknownCompat = (productId: string) => unknownIds.has(productId)
 
   const handleSelectProduct = (product: Product) => {
     addProductToSlot(category, product)
@@ -197,6 +291,51 @@ export function ProductSelector({
           )}
         </div>
 
+        {/* Compatibility Info Bar */}
+        {(category === 'Motherboard' || category === 'RAM') && (
+          <div className="flex items-center justify-between gap-4 py-2 px-3 rounded-lg bg-muted/50">
+            <div className="flex items-center gap-2 text-sm">
+              {isLoadingCompat ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Checking compatibility...</span>
+                </>
+              ) : compatInfo ? (
+                <>
+                  <Shield className="h-4 w-4 text-primary" />
+                  <span>{compatInfo}</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                  <span>No compatibility filter active</span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Mode:</span>
+              <div className="flex rounded-md border">
+                <Button
+                  size="sm"
+                  variant={compatMode === 'strict' ? 'default' : 'ghost'}
+                  className="h-7 px-3 rounded-r-none"
+                  onClick={() => setCompatMode('strict')}
+                >
+                  Strict
+                </Button>
+                <Button
+                  size="sm"
+                  variant={compatMode === 'lenient' ? 'default' : 'ghost'}
+                  className="h-7 px-3 rounded-l-none"
+                  onClick={() => setCompatMode('lenient')}
+                >
+                  Lenient
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Products List */}
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
           {isLoading ? (
@@ -216,20 +355,32 @@ export function ProductSelector({
                 Try Again
               </Button>
             </div>
-          ) : filteredProducts.length === 0 ? (
+          ) : compatFilteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Store className="h-12 w-12 text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">No {category}s found</p>
+              <p className="text-muted-foreground">No compatible {category}s found</p>
               <p className="text-sm text-muted-foreground mt-1">
-                {searchQuery ? "Try adjusting your search" : "No products available in this category yet"}
+                {compatibleIds && compatibleIds.size === 0
+                  ? "Try switching to Lenient mode to see more options"
+                  : searchQuery ? "Try adjusting your search" : "No products available in this category yet"}
               </p>
+              {compatMode === 'strict' && compatibleIds && (
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => setCompatMode('lenient')}
+                >
+                  Show All Products (Lenient Mode)
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-4 pb-4">
               <p className="text-sm text-muted-foreground">
-                {filteredProducts.length} product{filteredProducts.length !== 1 ? "s" : ""} found
+                {compatFilteredProducts.length} compatible product{compatFilteredProducts.length !== 1 ? "s" : ""} found
+                {compatibleIds && ` (${filteredProducts.length} total)`}
               </p>
-              {filteredProducts.map((product) => (
+              {compatFilteredProducts.map((product) => (
                 <motion.div
                   key={product.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -238,12 +389,21 @@ export function ProductSelector({
                     "border rounded-lg p-4 transition-all",
                     selectedProduct?.id === product.id
                       ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
+                      : "border-border hover:border-primary/50",
+                    isUnknownCompat(product.id) && "border-yellow-500/50 bg-yellow-500/5"
                   )}
                 >
+                  {/* Unknown compatibility warning */}
+                  {isUnknownCompat(product.id) && (
+                    <div className="flex items-center gap-2 mb-3 text-sm text-yellow-600 dark:text-yellow-500">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span>Compatibility could not be verified</span>
+                    </div>
+                  )}
                   <div className="flex gap-4">
                     {/* Product Image */}
                     <div className="w-24 h-24 rounded-md overflow-hidden bg-muted flex-shrink-0">
+
                       <img
                         src={product.image}
                         alt={product.name}

@@ -90,7 +90,9 @@ def run_spider(spider_name, category=None, limit=None, save_to_db=False, output=
     if save_to_db:
         current_pipelines = dict(settings.get("ITEM_PIPELINES", {}))
         current_pipelines["rigforge_scraper.pipelines.SupabaseIngestionPipeline"] = 300
+        current_pipelines["rigforge_scraper.pipelines.CompatibilityExtractionPipeline"] = 400
         settings["ITEM_PIPELINES"] = current_pipelines
+
     
     # Create crawler process
     process = CrawlerProcess(settings)

@@ -410,6 +410,7 @@ class ProductService:
         search: Optional[str] = None,
         brands: Optional[List[str]] = None,
         sort_by: Optional[str] = None,
+        product_ids: Optional[List[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         retailers: Optional[List[str]] = None,
@@ -437,6 +438,18 @@ class ProductService:
             Dict with 'products' list and 'pagination' metadata
         """
         try:
+            if product_ids is not None and len(product_ids) == 0:
+                return {
+                    "products": [],
+                    "pagination": {
+                        "page": page,
+                        "page_size": page_size,
+                        "total_count": 0,
+                        "total_pages": 0,
+                        "has_next": False,
+                        "has_prev": False,
+                    },
+                }
             if grouped:
                 # Return products with all retailers grouped under one product
                 # This is used by the system builder
@@ -447,6 +460,7 @@ class ProductService:
                     search=search,
                     brands=brands,
                     sort_by=sort_by,
+                    product_ids=product_ids,
                     min_price=min_price,
                     max_price=max_price,
                     retailers=retailers,
@@ -461,6 +475,7 @@ class ProductService:
                     search=search,
                     brands=brands,
                     sort_by=sort_by,
+                    product_ids=product_ids,
                     min_price=min_price,
                     max_price=max_price,
                     retailers=retailers,
@@ -488,6 +503,7 @@ class ProductService:
         search: Optional[str],
         brands: Optional[List[str]],
         sort_by: Optional[str],
+        product_ids: Optional[List[str]],
         min_price: Optional[float],
         max_price: Optional[float],
         retailers: Optional[List[str]],
@@ -506,6 +522,7 @@ class ProductService:
             search=search,
             brand=None,  # Don't filter by brand at DB level, we'll do it after
             sort_by=None,  # We'll sort after adding prices
+            product_ids=product_ids,
         )
         
         all_products = result["products"]
@@ -637,6 +654,7 @@ class ProductService:
         search: Optional[str],
         brands: Optional[List[str]],
         sort_by: Optional[str],
+        product_ids: Optional[List[str]],
         min_price: Optional[float],
         max_price: Optional[float],
         retailers: Optional[List[str]],
@@ -663,6 +681,7 @@ class ProductService:
             search=search,
             brands=brands,
             sort_by=sort_by,
+            product_ids=product_ids,
             min_price=min_price,
             max_price=max_price,
             retailers=retailers,

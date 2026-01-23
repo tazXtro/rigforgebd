@@ -16,6 +16,9 @@ export interface ProductsQueryParams {
     search?: string;
     brand?: string;
     sort?: string;
+    cpu_id?: string;
+    motherboard_id?: string;
+    compat_mode?: "strict" | "lenient";
     page?: number;
     page_size?: number;
 }
@@ -61,6 +64,9 @@ export async function fetchProductsServer(
     if (params?.search) searchParams.set('search', params.search);
     if (params?.brand) searchParams.set('brand', params.brand);
     if (params?.sort) searchParams.set('sort', params.sort);
+    if (params?.cpu_id) searchParams.set('cpu_id', params.cpu_id);
+    if (params?.motherboard_id) searchParams.set('motherboard_id', params.motherboard_id);
+    if (params?.compat_mode) searchParams.set('compat_mode', params.compat_mode);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.page_size) searchParams.set('page_size', String(params.page_size));
 

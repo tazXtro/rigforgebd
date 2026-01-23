@@ -275,6 +275,7 @@ class ProductRepository:
         search: Optional[str] = None,
         brand: Optional[str] = None,
         sort_by: Optional[str] = None,
+        product_ids: Optional[List[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         retailers: Optional[List[str]] = None,
@@ -314,6 +315,8 @@ class ProductRepository:
             if search:
                 # Search in name using case-insensitive pattern matching
                 count_query = count_query.or_(f"name.ilike.%{search}%,brand.ilike.%{search}%")
+            if product_ids and len(product_ids) > 0:
+                count_query = count_query.in_("id", product_ids)
             
             # Get total count
             count_response = count_query.execute()
@@ -345,6 +348,8 @@ class ProductRepository:
                 query = query.ilike("brand", f"%{brand}%")
             if search:
                 query = query.or_(f"name.ilike.%{search}%,brand.ilike.%{search}%")
+            if product_ids and len(product_ids) > 0:
+                query = query.in_("id", product_ids)
             
             response = query.execute()
             products = response.data if response and response.data else []
@@ -911,6 +916,7 @@ class PriceRepository:
         search: Optional[str] = None,
         brands: Optional[List[str]] = None,
         sort_by: Optional[str] = None,
+        product_ids: Optional[List[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         retailers: Optional[List[str]] = None,
@@ -938,6 +944,19 @@ class PriceRepository:
             Dict with 'listings' and 'pagination' metadata
         """
         try:
+            if product_ids is not None and len(product_ids) == 0:
+                return {
+                    "listings": [],
+                    "pagination": {
+                        "page": page,
+                        "page_size": page_size,
+                        "total_count": 0,
+                        "total_pages": 0,
+                        "has_next": False,
+                        "has_prev": False,
+                    },
+                }
+
             offset = (page - 1) * page_size
             
             # Select prices with product and retailer data joined
@@ -958,6 +977,8 @@ class PriceRepository:
                 count_query = count_query.or_(
                     f"products.name.ilike.%{search}%,products.brand.ilike.%{search}%"
                 )
+            if product_ids and len(product_ids) > 0:
+                count_query = count_query.in_("product_id", product_ids)
             if min_price is not None:
                 count_query = count_query.gte("price", min_price)
             if max_price is not None:
@@ -980,6 +1001,8 @@ class PriceRepository:
                 query = query.or_(
                     f"products.name.ilike.%{search}%,products.brand.ilike.%{search}%"
                 )
+            if product_ids and len(product_ids) > 0:
+                query = query.in_("product_id", product_ids)
             if min_price is not None:
                 query = query.gte("price", min_price)
             if max_price is not None:

@@ -250,6 +250,48 @@ class StartechSpider(BaseRetailerSpider):
                     if key and value:
                         specs[key] = value
         
+        # Also extract Key Features section (important for socket, cores, etc.)
+        # Key Features are often in a list format like "CPU Socket: AM4" or "Socket: AM5"
+        key_features = response.css('.short-description li::text, .product-short-description li::text').getall()
+        
+        # Also try the raw text from the key-features section
+        if not key_features:
+            key_features = response.css('.key-feature li::text, #key-feature li::text').getall()
+        
+        for feature in key_features:
+            feature = self.normalize_text(feature) if feature else ''
+            if ':' in feature:
+                # Parse "Key: Value" format
+                parts = feature.split(':', 1)
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    value = parts[1].strip()
+                    if key and value and key not in specs:
+                        # Normalize common key names
+                        normalized_key = key.replace(' ', '_').lower()
+                        if 'socket' in normalized_key:
+                            specs['Socket'] = value
+                        elif 'core' in normalized_key and 'thread' not in normalized_key:
+                            specs['Cores'] = value
+                        elif 'thread' in normalized_key:
+                            specs['Threads'] = value
+                        elif 'clock' in normalized_key or 'speed' in normalized_key:
+                            specs['Clock Speed'] = value
+                        elif 'cache' in normalized_key:
+                            if 'l1' in normalized_key:
+                                specs['L1 Cache'] = value
+                            elif 'l2' in normalized_key:
+                                specs['L2 Cache'] = value
+                            elif 'l3' in normalized_key:
+                                specs['L3 Cache'] = value
+                            else:
+                                specs['Cache'] = value
+                        elif 'model' in normalized_key:
+                            specs['Model'] = value
+                        else:
+                            # Store as-is if not recognized
+                            specs[key] = value
+        
         logger.debug(f"Extracted {len(specs)} specs for: {item_data['name']}")
         
         # Create and yield the product item with specs
@@ -258,6 +300,7 @@ class StartechSpider(BaseRetailerSpider):
             specs=specs,
             specs_source_url=response.url,
         )
+
     
     def follow_pagination(self, response):
         """

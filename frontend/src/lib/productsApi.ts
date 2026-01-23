@@ -6,6 +6,9 @@ export interface ProductsQueryParams {
     search?: string;
     brand?: string;
     sort?: string;  // Sort option: newest, name_asc, name_desc, price_asc, price_desc
+    cpu_id?: string;
+    motherboard_id?: string;
+    compat_mode?: "strict" | "lenient";
     min_price?: number;
     max_price?: number;
     retailers?: string;  // Comma-separated retailer slugs
@@ -86,4 +89,116 @@ export async function fetchBrands(category?: string): Promise<string[]> {
         params: category ? { category } : undefined
     });
     return response.data;
+}
+
+// ============================================================================
+// Compatibility API
+// ============================================================================
+
+/**
+ * Response from compatibility API endpoints
+ */
+export interface CompatibilityResponse {
+    cpu?: {
+        id: string;
+        socket: string;
+        brand?: string;
+        generation?: string;
+    };
+    motherboard?: {
+        id: string;
+        memory_type: string;
+        max_speed_mhz?: number;
+        max_capacity_gb?: number;
+        slots?: number;
+    };
+    mode: 'strict' | 'lenient';
+    compatible: string[];  // Product IDs that are compatible
+    unknown: string[];     // Product IDs with unknown compatibility (for lenient mode)
+    error?: string;
+}
+
+/**
+ * Fetch compatible motherboard IDs for a given CPU
+ * 
+ * @param cpuId - The product ID of the selected CPU
+ * @param mode - 'strict' returns only confident matches, 'lenient' includes unknown
+ */
+export async function fetchCompatibleMotherboards(
+    cpuId: string,
+    mode: 'strict' | 'lenient' = 'strict'
+): Promise<CompatibilityResponse> {
+    try {
+        const response = await api.get<CompatibilityResponse>('/products/compatible/', {
+            params: { cpu_id: cpuId, mode }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching compatible motherboards:', error);
+        return {
+            mode,
+            compatible: [],
+            unknown: [],
+            error: 'Failed to fetch compatibility data'
+        };
+    }
+}
+
+/**
+ * Fetch compatible RAM IDs for a given motherboard
+ * 
+ * @param motherboardId - The product ID of the selected motherboard
+ * @param mode - 'strict' returns only confident matches, 'lenient' includes unknown
+ */
+export async function fetchCompatibleRAM(
+    motherboardId: string,
+    mode: 'strict' | 'lenient' = 'strict'
+): Promise<CompatibilityResponse> {
+    try {
+        const response = await api.get<CompatibilityResponse>('/products/compatible/', {
+            params: { motherboard_id: motherboardId, mode }
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching compatible RAM:', error);
+        return {
+            mode,
+            compatible: [],
+            unknown: [],
+            error: 'Failed to fetch compatibility data'
+        };
+    }
+}
+
+/**
+ * Fetch compatibility info for a specific product
+ */
+export interface ProductCompatibilityInfo {
+    id: string;
+    product_id: string;
+    component_type: 'cpu' | 'motherboard' | 'ram';
+    cpu_socket?: string;
+    cpu_brand?: string;
+    cpu_generation?: string;
+    mobo_socket?: string;
+    mobo_chipset?: string;
+    memory_type?: string;
+    memory_slots?: number;
+    memory_max_speed_mhz?: number;
+    memory_max_capacity_gb?: number;
+    confidence: number;
+    extraction_source: string;
+}
+
+export async function fetchProductCompatibility(
+    productId: string
+): Promise<ProductCompatibilityInfo | null> {
+    try {
+        const response = await api.get<ProductCompatibilityInfo>(
+            `/products/${productId}/compatibility/`
+        );
+        return response.data;
+    } catch {
+        return null;
+    }
 }

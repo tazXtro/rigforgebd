@@ -54,6 +54,9 @@ class ProductListQuerySerializer(serializers.Serializer):
     brand = serializers.CharField(required=False)
     search = serializers.CharField(required=False)
     sort = serializers.CharField(required=False)  # Sort option: newest, name_asc, name_desc, price_asc, price_desc
+    cpu_id = serializers.CharField(required=False)
+    motherboard_id = serializers.CharField(required=False)
+    compat_mode = serializers.ChoiceField(required=False, choices=["strict", "lenient"])
     min_price = serializers.IntegerField(required=False, min_value=0)
     max_price = serializers.IntegerField(required=False, min_value=0)
     retailers = serializers.CharField(required=False)  # Comma-separated retailer slugs

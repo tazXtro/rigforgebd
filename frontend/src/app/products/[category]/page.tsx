@@ -65,6 +65,9 @@ interface CategoryPageProps {
         page?: string
         sort?: string
         q?: string
+        cpu_id?: string
+        motherboard_id?: string
+        compat_mode?: "strict" | "lenient"
     }>
 }
 
@@ -77,6 +80,16 @@ export default async function CategoryPage({
     const page = parseInt(search.page || "1", 10)
     const sort = search.sort || "newest"
     const query = search.q || ""
+    const cpuId = search.cpu_id
+    const motherboardId = search.motherboard_id
+    const compatMode = (search.compat_mode as "strict" | "lenient" | undefined) || undefined
+
+    const compatibilityParams =
+        category === "motherboards" && cpuId
+            ? { cpu_id: cpuId, compat_mode: compatMode }
+            : category === "memory" && motherboardId
+                ? { motherboard_id: motherboardId, compat_mode: compatMode }
+                : {}
 
     // Fetch initial data on the server with Next.js caching
     const [productsData, categoryCounts, retailers] = await Promise.all([
@@ -86,6 +99,7 @@ export default async function CategoryPage({
             page_size: 24,
             sort,
             search: query || undefined,
+            ...compatibilityParams,
         }),
         fetchCategoryCountsServer(),
         fetchRetailersServer(),

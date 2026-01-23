@@ -26,6 +26,9 @@ interface BuilderContextType {
     getBaseTotal: () => number
     getShopTotal: (shopName: string) => number
     clearBuild: () => void
+    // Compatibility helpers
+    getSelectedCPU: () => Product | null
+    getSelectedMotherboard: () => Product | null
 }
 
 const BuilderContext = createContext<BuilderContextType | undefined>(undefined)
@@ -200,6 +203,22 @@ export function BuilderProvider({ children }: { children: ReactNode }) {
         setSlots([])
     }, [])
 
+    // Get selected CPU for compatibility filtering
+    const getSelectedCPU = useCallback(() => {
+        const cpuSlots = slots.filter(
+            (s) => s.category === 'CPU' && s.isSelected && s.product
+        )
+        return cpuSlots.length > 0 ? cpuSlots[0].product : null
+    }, [slots])
+
+    // Get selected Motherboard for RAM compatibility filtering
+    const getSelectedMotherboard = useCallback(() => {
+        const moboSlots = slots.filter(
+            (s) => s.category === 'Motherboard' && s.isSelected && s.product
+        )
+        return moboSlots.length > 0 ? moboSlots[0].product : null
+    }, [slots])
+
     return (
         <BuilderContext.Provider
             value={{
@@ -219,6 +238,8 @@ export function BuilderProvider({ children }: { children: ReactNode }) {
                 getBaseTotal,
                 getShopTotal,
                 clearBuild,
+                getSelectedCPU,
+                getSelectedMotherboard,
             }}
         >
             {children}

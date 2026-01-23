@@ -24,14 +24,32 @@ interface ComponentRowProps {
 
 export function ComponentRow({ config, index }: ComponentRowProps) {
   const router = useRouter()
-  const { getSlotsForCategory, removeSlot, selectSlot, setSlotQuantity, setSlotRetailer, selectedRetailers } = useBuilder()
+  const { getSlotsForCategory, removeSlot, selectSlot, setSlotQuantity, setSlotRetailer, selectedRetailers, getSelectedCPU, getSelectedMotherboard } = useBuilder()
   const slots = getSlotsForCategory(config.category)
   const selectedSlot = slots.find((s) => s.isSelected)
 
   const handleOpenSelector = () => {
     // Navigate to products page with source=builder to indicate selection mode
     const categorySlug = getProductCategorySlug(config.category)
-    router.push(`/products/${categorySlug}?source=builder`)
+    const params = new URLSearchParams({ source: "builder" })
+
+    if (config.category === "Motherboard") {
+      const cpu = getSelectedCPU()
+      if (cpu?.id) {
+        params.set("cpu_id", cpu.id)
+        params.set("compat_mode", "strict")
+      }
+    }
+
+    if (config.category === "RAM") {
+      const motherboard = getSelectedMotherboard()
+      if (motherboard?.id) {
+        params.set("motherboard_id", motherboard.id)
+        params.set("compat_mode", "strict")
+      }
+    }
+
+    router.push(`/products/${categorySlug}?${params.toString()}`)
   }
 
   // Calculate shop prices for selected product

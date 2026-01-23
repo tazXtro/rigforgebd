@@ -69,6 +69,9 @@ export function ProductsPageClient({
 
     // Pagination state from URL
     const currentPage = parseInt(searchParams.get("page") || "1", 10)
+    const cpuId = searchParams.get("cpu_id") || undefined
+    const motherboardId = searchParams.get("motherboard_id") || undefined
+    const compatMode = (searchParams.get("compat_mode") as "strict" | "lenient" | null) || undefined
 
     // Filter state
     const [search, setSearch] = useState(searchParams.get("q") || "")
@@ -122,6 +125,9 @@ export function ProductsPageClient({
                     search: debouncedSearch || undefined,
                     brand: filters.brands.length > 0 ? filters.brands.join(",") : undefined,
                     sort: sortBy || undefined,
+                    cpu_id: cpuId,
+                    motherboard_id: motherboardId,
+                    compat_mode: compatMode,
                     page: currentPage,
                     page_size: PAGE_SIZE,
                     min_price: filters.minPrice > 0 ? filters.minPrice : undefined,
@@ -148,12 +154,12 @@ export function ProductsPageClient({
             }
         }
         loadData()
-    }, [category, currentPage, debouncedSearch, sortBy, filters.brands.join(','), filters.minPrice, filters.maxPrice, filters.retailers.join(','), needsClientFetch, initialCategory])
+    }, [category, currentPage, debouncedSearch, sortBy, cpuId, motherboardId, compatMode, filters.brands.join(','), filters.minPrice, filters.maxPrice, filters.retailers.join(','), needsClientFetch, initialCategory])
 
     // Mark that future changes need client fetch
     useEffect(() => {
         setNeedsClientFetch(true)
-    }, [category, debouncedSearch, sortBy, currentPage, filters.brands.join(','), filters.minPrice, filters.maxPrice, filters.retailers.join(',')])
+    }, [category, debouncedSearch, sortBy, currentPage, cpuId, motherboardId, compatMode, filters.brands.join(','), filters.minPrice, filters.maxPrice, filters.retailers.join(',')])
 
     // All filtering is now handled server-side
     // Just use products directly from the API
