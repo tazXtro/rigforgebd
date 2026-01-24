@@ -34,12 +34,15 @@ class CPUNormalizer(BaseNormalizer):
         (r'\bsTR[X]?4\b', 'sTRX4'),  # Threadripper
         (r'\bSP3\b', 'SP3'),  # EPYC
         
-        # Intel LGA sockets
+        # Intel LGA sockets (order matters: more specific first)
+        (r'\bLGA[\s\-]?2011[\s\-]?(?:v3|V3)\b', 'LGA2011-v3'),  # Haswell-E (i7-5xxx-K)
+        (r'\bLGA[\s\-]?2011\b', 'LGA2011'),  # Sandy Bridge-E / Ivy Bridge-E / Haswell-E
         (r'\bLGA[\s\-]?1851\b', 'LGA1851'),  # Arrow Lake
         (r'\bLGA[\s\-]?1700\b', 'LGA1700'),  # Alder/Raptor/Refresh
         (r'\bLGA[\s\-]?1200\b', 'LGA1200'),  # 10th/11th Gen
         (r'\bLGA[\s\-]?1151\b', 'LGA1151'),  # 6th-9th Gen
-        (r'\bLGA[\s\-]?2066\b', 'LGA2066'),  # HEDT
+        (r'\bLGA[\s\-]?1150\b', 'LGA1150'),  # 4th/5th Gen mainstream
+        (r'\bLGA[\s\-]?2066\b', 'LGA2066'),  # HEDT (Skylake-X, etc.)
         (r'\bLGA[\s\-]?4677\b', 'LGA4677'),  # Xeon
         
         # Generic socket capture
@@ -102,6 +105,30 @@ class CPUNormalizer(BaseNormalizer):
         # Intel 10th Gen (LGA1200)
         r'Core\s+i[3579][\s\-]?10\d{3}': ('10th Gen Comet Lake', 'LGA1200'),
         r'10th\s+Gen.*Core\s+i[3579]': ('10th Gen Comet Lake', 'LGA1200'),
+        
+        # Intel 9th Gen (LGA1151)
+        r'Core\s+i[3579][\s\-]?9\d{3}': ('9th Gen Coffee Lake Refresh', 'LGA1151'),
+        r'9th\s+Gen.*Core\s+i[3579]': ('9th Gen Coffee Lake Refresh', 'LGA1151'),
+        
+        # Intel 8th Gen (LGA1151)
+        r'Core\s+i[3579][\s\-]?8\d{3}': ('8th Gen Coffee Lake', 'LGA1151'),
+        r'8th\s+Gen.*Core\s+i[3579]': ('8th Gen Coffee Lake', 'LGA1151'),
+        
+        # Intel 7th Gen (LGA1151)
+        r'Core\s+i[3579][\s\-]?7\d{3}': ('7th Gen Kaby Lake', 'LGA1151'),
+        r'7th\s+Gen.*Core\s+i[3579]': ('7th Gen Kaby Lake', 'LGA1151'),
+        
+        # Intel 6th Gen (LGA1151)
+        r'Core\s+i[3579][\s\-]?6\d{3}': ('6th Gen Skylake', 'LGA1151'),
+        r'6th\s+Gen.*Core\s+i[3579]': ('6th Gen Skylake', 'LGA1151'),
+        
+        # Intel 5th Gen HEDT (LGA2011-v3) - i7-5820K, i7-5930K, i7-5960X
+        r'Core\s+i7[\s\-]?5[89]\d{2}[KX]?': ('5th Gen Haswell-E', 'LGA2011-v3'),
+        r'5th\s+Gen.*Core\s+i7[\s\-]?5[89]': ('5th Gen Haswell-E', 'LGA2011-v3'),
+        
+        # Intel 4th Gen HEDT (LGA2011-v3) - i7-4820K, i7-4930K, i7-4960X
+        r'Core\s+i7[\s\-]?4[89]\d{2}[KX]?': ('4th Gen Ivy Bridge-E', 'LGA2011'),
+        r'4th\s+Gen.*Core\s+i7[\s\-]?4[89]': ('4th Gen Ivy Bridge-E', 'LGA2011'),
     }
 
     

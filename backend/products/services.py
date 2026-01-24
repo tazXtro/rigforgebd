@@ -180,7 +180,7 @@ class ProductIngestionService:
             "category_slug": slugify(category, lowercase=True),
             "brand": scraped_data.get("brand", self._extract_brand(name)),
             "image_url": scraped_data.get("image_url"),
-            "specs": scraped_data.get("specs", {}),
+            # Note: specs are stored separately in product_specs table, not here
         }
     
     def _prepare_price_data(

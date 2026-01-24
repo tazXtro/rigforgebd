@@ -173,6 +173,29 @@ class CompatibilityRepository:
             logger.error(f"Error finding unknown motherboards: {e}")
             return []
     
+    def find_all_motherboards(self) -> List[str]:
+        """
+        Get all motherboard product IDs (regardless of socket).
+        
+        Used as a fallback when CPU socket info is not available.
+        
+        Returns:
+            List of motherboard product IDs
+        """
+        try:
+            result = (
+                self.client.table('product_compat')
+                .select('product_id')
+                .eq('component_type', 'motherboard')
+                .execute()
+            )
+            
+            return [r['product_id'] for r in result.data] if result.data else []
+            
+        except Exception as e:
+            logger.error(f"Error finding all motherboards: {e}")
+            return []
+    
     def find_ram_by_type(
         self,
         memory_type: str,

@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS products (
     category_slug VARCHAR(100) NOT NULL,
     brand VARCHAR(100),
     image_url TEXT,
-    specs JSONB DEFAULT '{}',
+    -- Note: specs are stored in product_specs table, not here
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

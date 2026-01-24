@@ -67,15 +67,20 @@ class CompatibilityService:
         cpu_socket = cpu_compat.get('cpu_socket')
         
         if not cpu_socket:
+            # Fallback: When CPU socket is unknown, return ALL motherboards
+            # This provides a better UX than showing "no motherboards found"
+            # for CPUs where socket data couldn't be extracted from retailer sites
+            all_motherboards = self.compat_repo.find_all_motherboards()
+            
             return {
-                "error": "CPU socket information not available",
+                "warning": "CPU socket information not available - showing all motherboards",
                 "cpu": {
                     "id": cpu_id,
                     "socket": None,
                     "confidence": cpu_compat.get('confidence', 0),
                 },
                 "mode": mode,
-                "compatible": [],
+                "compatible": all_motherboards,
                 "unknown": [],
             }
         
