@@ -147,6 +147,7 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
                       variant="outline"
                       size="sm"
                       className="flex-1 justify-between gap-2 max-w-[320px] h-auto py-2"
+                      suppressHydrationWarning
                     >
                       <div className="flex items-center gap-2">
                         {selectedSlot.product?.image && (
@@ -217,7 +218,7 @@ export function ComponentRow({ config, index }: ComponentRowProps) {
                     </div>
                   )}
                   {/* Product Name - full title with wrap */}
-                  <span className="text-sm text-foreground leading-tight max-w-[250px]">
+                  <span className="text-sm text-foreground leading-tight max-w-[250px] break-words overflow-wrap-anywhere line-clamp-2">
                     {selectedSlot.product?.name}
                   </span>
                   {slots.length < config.maxSlots && (

@@ -15,7 +15,7 @@ import {
 } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { ProductsMegaMenu, ProductsNavTrigger, MobileProductsAccordion } from "@/components/ProductsMegaMenu"
 
@@ -418,11 +418,13 @@ export default function Navbar() {
                             size="icon"
                             className="lg:hidden border-border/40 bg-background/50 backdrop-blur-md"
                             aria-label="Open menu"
+                            suppressHydrationWarning
                         >
                             <Menu className="h-5 w-5" aria-hidden="true" />
                         </Button>
                     </SheetTrigger>
                     <SheetContent side="right" className="w-75 sm:w-87.5">
+                        <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
                         <div className="flex flex-col gap-6 mt-6">
                             {/* Mobile Logo */}
                             <Link

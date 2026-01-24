@@ -44,6 +44,9 @@ export function BuilderProvider({ children }: { children: ReactNode }) {
         [slots]
     )
 
+    // Categories that only allow a single component (replacing on add)
+    const singleSlotCategories: ComponentCategory[] = ['CPU', 'Motherboard', 'GPU', 'Case', 'PSU', 'Cooler', 'Monitor']
+
     const addProductToSlot = useCallback(
         (category: ComponentCategory, product: Product) => {
             const newSlot: ComponentSlot = {
@@ -55,6 +58,14 @@ export function BuilderProvider({ children }: { children: ReactNode }) {
             }
 
             setSlots((prev) => {
+                // For single-slot categories, replace existing component instead of adding
+                if (singleSlotCategories.includes(category)) {
+                    // Remove all existing slots for this category, then add the new one
+                    const withoutCategory = prev.filter((slot) => slot.category !== category)
+                    return [...withoutCategory, newSlot]
+                }
+
+                // For multi-slot categories (RAM, Storage), add up to max slots
                 // Deselect all other slots in the same category
                 const updated = prev.map((slot) =>
                     slot.category === category ? { ...slot, isSelected: false } : slot

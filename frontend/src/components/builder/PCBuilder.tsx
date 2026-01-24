@@ -19,7 +19,7 @@ export function PCBuilder() {
 
   // Group components by section
   const coreComponents = COMPONENT_CONFIGS.filter(c =>
-    ['CPU', 'Motherboard', 'RAM', 'Storage', 'GPU', 'PSU', 'Case', 'Cooler'].includes(c.category)
+    ['CPU', 'Motherboard', 'RAM', 'Storage', 'GPU', 'PSU', 'Case', 'Cooler', 'Monitor'].includes(c.category)
   )
   const peripherals = COMPONENT_CONFIGS.filter(c =>
     ['Monitor'].includes(c.category)

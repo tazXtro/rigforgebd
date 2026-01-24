@@ -19,7 +19,7 @@ import {
     ChevronDown,
     ChevronRight,
     Flame,
-    Sparkles,
+    ShoppingBag,
     ArrowRight,
     type LucideIcon,
 } from "lucide-react"
@@ -212,7 +212,7 @@ export function ProductsMegaMenu({
                         <div className="flex items-center justify-between px-6 py-4 border-b border-border/30 bg-gradient-to-r from-primary/5 to-transparent">
                             <div className="flex items-center gap-3">
                                 <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/15">
-                                    <Sparkles className="w-4 h-4 text-primary" />
+                                    <ShoppingBag className="w-4 h-4 text-primary" />
                                 </div>
                                 <div>
                                     <h3 className="font-semibold text-foreground tracking-tight">
@@ -303,7 +303,7 @@ export function MobileProductsAccordion({
                 className="flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-foreground/70 hover:bg-muted hover:text-foreground transition-all"
             >
                 <div className="flex items-center gap-3">
-                    <Sparkles className="w-4 h-4" />
+                    <ShoppingBag className="w-4 h-4" />
                     <span className="font-medium">Products</span>
                 </div>
                 <motion.div
@@ -378,7 +378,7 @@ export function ProductsNavTrigger({
             )}
         >
             <span className="flex items-center gap-1.5">
-                <Sparkles size={16} strokeWidth={2} aria-hidden="true" />
+                <ShoppingBag size={16} strokeWidth={2} aria-hidden="true" />
                 <span className="hidden xl:inline">Products</span>
                 <motion.div
                     animate={{ rotate: isMenuOpen ? 180 : 0 }}
