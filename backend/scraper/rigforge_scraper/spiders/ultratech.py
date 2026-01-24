@@ -226,21 +226,85 @@ class UltratechSpider(BaseRetailerSpider):
             # Extract brand from product name
             brand = self.extract_brand(name)
             
-            # Create product item
-            return self.create_product_item(
-                name=name,
-                price=price,
-                product_url=product_url,
-                category=category,
-                image_url=image_url,
-                brand=brand,
-                in_stock=in_stock,
-                source_page=source_url,
+            # Store item data and follow product URL to get detailed specs
+            item_data = {
+                'name': name,
+                'price': price,
+                'product_url': product_url,
+                'category': category,
+                'image_url': image_url,
+                'brand': brand,
+                'in_stock': in_stock,
+                'source_page': source_url,
+            }
+            
+            # Follow product URL to get detailed specs
+            return self.make_request(
+                product_url,
+                callback=self.parse_product_detail,
+                meta={'item_data': item_data},
             )
             
         except Exception as e:
             logger.error(f"Error parsing product card: {e}\n{traceback.format_exc()}")
             return None
+    
+    def parse_product_detail(self, response):
+        """
+        Parse UltraTech product detail page to extract specifications.
+        
+        Args:
+            response: Scrapy response from product detail page
+            
+        Yields:
+            ProductItem with specifications
+        """
+        item_data = response.meta['item_data']
+        
+        # UltraTech uses specification tables (OpenCart style)
+        specs = self.parse_specs_table(response, {
+            'table': '#tab-specification table, .specification-table, .product-info table, table.table-striped',
+            'row': 'tr',
+            'key': 'td:first-child::text, th::text',
+            'value': 'td:last-child::text',
+        })
+        
+        # If no specs found, try alternative selectors
+        if not specs:
+            # Try key-value pairs in product attributes section
+            spec_rows = response.css('.product-attributes tr, .specifications tr')
+            for row in spec_rows:
+                key = row.css('td:first-child::text, th::text').get()
+                value = row.css('td:last-child::text').get()
+                if key and value:
+                    key = self.normalize_text(key).rstrip(':')
+                    value = self.normalize_text(value)
+                    if key and value:
+                        specs[key] = value
+        
+        # Try description list format
+        if not specs:
+            for dt in response.css('.product-specs dt, .specifications dt'):
+                key = self.normalize_text(dt.css('::text').get())
+                dd = dt.xpath('following-sibling::dd[1]')
+                value = self.normalize_text(dd.css('::text').get())
+                if key and value:
+                    specs[key] = value
+        
+        # Create and yield the product item with specs
+        item = self.create_product_item(
+            name=item_data['name'],
+            price=item_data['price'],
+            product_url=item_data['product_url'],
+            category=item_data['category'],
+            image_url=item_data['image_url'],
+            brand=item_data['brand'],
+            in_stock=item_data['in_stock'],
+            specs=specs,
+            source_page=item_data['source_page'],
+        )
+        
+        yield item
     
     def follow_pagination(self, response):
         """

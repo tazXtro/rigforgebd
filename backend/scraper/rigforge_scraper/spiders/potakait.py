@@ -246,25 +246,94 @@ class PotakaitSpider(BaseRetailerSpider):
             # Extract brand
             brand = self.extract_brand(name)
             
-            # Extract specs if available
+            # Extract basic specs from card if available
             specs = self.extract_specs(card)
             
-            # Create product item
-            return self.create_product_item(
-                name=name,
-                price=price,
-                product_url=product_url,
-                category=category,
-                image_url=image_url,
-                brand=brand,
-                in_stock=in_stock,
-                specs=specs,
-                source_page=source_url,
+            # Store item data and follow product URL to get detailed specs
+            item_data = {
+                'name': name,
+                'price': price,
+                'product_url': product_url,
+                'category': category,
+                'image_url': image_url,
+                'brand': brand,
+                'in_stock': in_stock,
+                'specs': specs,
+                'source_page': source_url,
+            }
+            
+            # Follow product URL to get detailed specs
+            return self.make_request(
+                product_url,
+                callback=self.parse_product_detail,
+                meta={'item_data': item_data},
             )
             
         except Exception as e:
             logger.error(f"Error parsing product card: {e}\n{traceback.format_exc()}")
             return None
+    
+    def parse_product_detail(self, response):
+        """
+        Parse product detail page to extract specifications.
+        
+        Args:
+            response: Scrapy response from product detail page
+            
+        Yields:
+            ProductItem with specifications
+        """
+        item_data = response.meta['item_data']
+        
+        # Potaka IT uses specification tables - try multiple selectors
+        specs = self.parse_specs_table(response, {
+            'table': '.specification-table, .product-specification table, table.data-table, #specification table',
+            'row': 'tr',
+            'key': 'td:first-child::text, th::text',
+            'value': 'td:last-child::text',
+        })
+        
+        # If no specs found, try alternative selectors
+        if not specs:
+            # Try key-value pairs in list format
+            spec_items = response.css('.product-info li, .specifications li, .spec-list li')
+            for item in spec_items:
+                text = item.css('::text').get()
+                if text and ':' in text:
+                    parts = text.split(':', 1)
+                    if len(parts) == 2:
+                        key = self.normalize_text(parts[0]).rstrip(':')
+                        value = self.normalize_text(parts[1])
+                        if key and value:
+                            specs[key] = value
+        
+        # Try description list format (dt/dd)
+        if not specs:
+            for dt in response.css('.specifications dt, .product-attributes dt'):
+                key = self.normalize_text(dt.css('::text').get())
+                dd = dt.xpath('following-sibling::dd[1]')
+                value = self.normalize_text(dd.css('::text').get())
+                if key and value:
+                    specs[key] = value
+        
+        # Merge with any specs from card
+        if item_data.get('specs'):
+            specs.update(item_data['specs'])
+        
+        # Create and yield the product item with specs
+        item = self.create_product_item(
+            name=item_data['name'],
+            price=item_data['price'],
+            product_url=item_data['product_url'],
+            category=item_data['category'],
+            image_url=item_data['image_url'],
+            brand=item_data['brand'],
+            in_stock=item_data['in_stock'],
+            specs=specs,
+            source_page=item_data['source_page'],
+        )
+        
+        yield item
     
     def extract_specs(self, card) -> dict:
         """
