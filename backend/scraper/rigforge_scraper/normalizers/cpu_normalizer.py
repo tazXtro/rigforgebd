@@ -263,6 +263,7 @@ class CPUNormalizer(BaseNormalizer):
             - "AMD Ryzen 5 5600G Processor" -> "Ryzen 5 5600G"
             - "AMD Ryzen 7 7800X3D 8-Core AM5" -> "Ryzen 7 7800X3D"
             - "Intel Xeon E5 1650 V3 OEM/Tray 3.5 GHz" -> "Xeon E5-1650 V3"
+            - "Intel® Pentium® Gold G6400 Processor" -> "Pentium G6400"
         
         Args:
             title: CPU product title
@@ -272,6 +273,12 @@ class CPUNormalizer(BaseNormalizer):
         """
         if not title:
             return None
+        
+        # Clean title: remove trademark/registered symbols that break patterns
+        # ® (registered), ™ (trademark), © (copyright)
+        title = title.replace('®', ' ').replace('™', ' ').replace('©', ' ')
+        # Normalize multiple spaces to single space
+        title = ' '.join(title.split())
         
         # Pattern 1: Intel Core iX-XXXXX (with hyphen)
         # Matches: i5-11500, i7-14700K, i9-13900KS, i3-12100F

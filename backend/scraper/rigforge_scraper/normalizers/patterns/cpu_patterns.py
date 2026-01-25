@@ -20,8 +20,13 @@ SOCKET_PATTERNS: List[Tuple[Pattern[str], str]] = [
     (re.compile(r'\bSocket\s*AM4\b', re.I), "AM4"),
     (re.compile(r'\bAM4\b', re.I), "AM4"),
     (re.compile(r'\bsTRX4\b', re.I), "sTRX4"),
+    (re.compile(r'\bTRX4\b', re.I), "sTRX4"),  # TRX4 without 's' prefix
     (re.compile(r'\bsTR4\b', re.I), "sTR4"),
+    (re.compile(r'\bTR4\b', re.I), "sTR4"),    # TR4 without 's' prefix
+    (re.compile(r'\bsTR5\b', re.I), "sTR5"),
+    (re.compile(r'\bTR5\b', re.I), "sTR5"),    # TR5 without 's' prefix
     (re.compile(r'\bsWRX8\b', re.I), "sWRX8"),
+    (re.compile(r'\bWRX8\b', re.I), "sWRX8"),  # WRX8 without 's' prefix
     (re.compile(r'\bSP3\b', re.I), "SP3"),
     
     # Intel sockets - specific variants first
