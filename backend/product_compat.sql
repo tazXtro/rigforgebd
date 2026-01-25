@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS product_compat (
     cpu_brand VARCHAR(20),                -- 'AMD', 'Intel'
     cpu_generation VARCHAR(50),           -- 'Ryzen 5000', 'Ryzen 7000', 'Raptor Lake', etc.
     cpu_tdp_watts INTEGER,                -- TDP in watts (for future cooler compatibility)
+    canonical_cpu_name VARCHAR(100),      -- Normalized CPU name for dataset matching: 'i5-14400', 'Ryzen 5 5600G'
     
     -- =====================================================
     -- Motherboard Compatibility Fields
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS product_compat (
     mobo_socket VARCHAR(20),              -- 'AM4', 'AM5', 'LGA1700', 'LGA1200', 'LGA1851'
     mobo_chipset VARCHAR(20),             -- 'B550', 'X670', 'Z790', 'B760', etc.
     mobo_form_factor VARCHAR(20),         -- 'ATX', 'Micro-ATX', 'Mini-ITX', 'E-ATX'
+    canonical_mobo_name VARCHAR(150),     -- Normalized mobo name for dataset matching: 'MSI B550M PRO-VDH'
     
     -- =====================================================
     -- Memory Compatibility Fields (shared by Motherboard & RAM)
@@ -96,6 +98,15 @@ CREATE INDEX IF NOT EXISTS idx_compat_socket_confidence
 CREATE INDEX IF NOT EXISTS idx_compat_ram_type_speed 
     ON product_compat(memory_type, memory_max_speed_mhz) 
     WHERE component_type = 'ram';
+
+-- Canonical name indexes for dataset matching
+CREATE INDEX IF NOT EXISTS idx_compat_canonical_cpu_name 
+    ON product_compat(canonical_cpu_name) 
+    WHERE component_type = 'cpu';
+
+CREATE INDEX IF NOT EXISTS idx_compat_canonical_mobo_name 
+    ON product_compat(canonical_mobo_name) 
+    WHERE component_type = 'motherboard';
 
 -- =====================================================
 -- UPDATED_AT TRIGGER

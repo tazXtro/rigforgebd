@@ -211,6 +211,8 @@ class CompatibilityExtractionPipeline:
         # RAM/Memory variations
         'ram': 'ram',
         'memory': 'ram',
+        'ram-memory': 'ram',
+        'memory-ram': 'ram',
     }
     
     def __init__(self):
@@ -276,7 +278,8 @@ class CompatibilityExtractionPipeline:
             return item
         
         # Get category and determine if relevant for compatibility
-        category = adapter.get('category', '').lower().replace(' ', '-')
+        category_raw = adapter.get('category', '')
+        category = self._normalize_category(category_raw)
         component_type = self.CATEGORY_TO_TYPE.get(category)
         
         if not component_type:
@@ -317,4 +320,12 @@ class CompatibilityExtractionPipeline:
             logger.error(f"Error extracting/saving compat: {e}")
         
         return item
+
+    def _normalize_category(self, category: str) -> str:
+        """Normalize category to a consistent lookup key."""
+        if not category:
+            return ''
+        key = category.strip().lower()
+        key = re.sub(r'[\s_/]+', '-', key)
+        return key.strip('-')
 

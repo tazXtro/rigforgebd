@@ -195,6 +195,58 @@ class CompatibilityRepository:
         except Exception as e:
             logger.error(f"Error finding all motherboards: {e}")
             return []
+
+    def get_null_socket_records(self, component_type: str) -> List[Dict[str, Any]]:
+        """
+        Get compatibility records with NULL socket for a component type.
+
+        Args:
+            component_type: 'cpu' or 'motherboard'
+
+        Returns:
+            List of compat records with NULL socket and non-null canonical name.
+        """
+        try:
+            socket_field = 'cpu_socket' if component_type == 'cpu' else 'mobo_socket'
+            canonical_field = 'canonical_cpu_name' if component_type == 'cpu' else 'canonical_mobo_name'
+
+            result = (
+                self.client.table('product_compat')
+                .select(f'id, product_id, {canonical_field}, {socket_field}')
+                .eq('component_type', component_type)
+                .is_(socket_field, 'null')
+                .not_.is_(canonical_field, 'null')
+                .execute()
+            )
+
+            return result.data if result.data else []
+        except Exception as e:
+            logger.error(f"Error fetching NULL socket records: {e}")
+            return []
+
+    def update_socket_by_id(self, record_id: str, socket_field: str, socket: str) -> bool:
+        """
+        Update a socket field for a specific compat record.
+
+        Args:
+            record_id: product_compat record ID
+            socket_field: 'cpu_socket' or 'mobo_socket'
+            socket: Socket value to set
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        try:
+            result = (
+                self.client.table('product_compat')
+                .update({socket_field: socket})
+                .eq('id', record_id)
+                .execute()
+            )
+            return bool(result.data)
+        except Exception as e:
+            logger.error(f"Error updating socket for record {record_id}: {e}")
+            return False
     
     def find_ram_by_type(
         self,

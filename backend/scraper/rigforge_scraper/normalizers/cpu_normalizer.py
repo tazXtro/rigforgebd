@@ -9,6 +9,7 @@ import logging
 from typing import Dict, Any, Optional, Tuple
 
 from .base import BaseNormalizer, ExtractionResult
+from .data_loader import load_normalizer_data
 
 logger = logging.getLogger(__name__)
 
@@ -24,125 +25,14 @@ class CPUNormalizer(BaseNormalizer):
         - cpu_tdp_watts: TDP in watts
     """
     
-    # Socket patterns in priority order (most specific first)
+    DATA = load_normalizer_data("cpu")
     SOCKET_PATTERNS = [
-        # AMD sockets
-        (r'\bAM5\b', 'AM5'),
-        (r'\bAM4\b', 'AM4'),
-        (r'\bSocket\s*AM5\b', 'AM5'),
-        (r'\bSocket\s*AM4\b', 'AM4'),
-        (r'\bsTR[X]?4\b', 'sTRX4'),  # Threadripper
-        (r'\bSP3\b', 'SP3'),  # EPYC
-        
-        # Intel LGA sockets (order matters: more specific first)
-        (r'\bLGA[\s\-]?2011[\s\-]?(?:v3|V3)\b', 'LGA2011-v3'),  # Haswell-E (i7-5xxx-K)
-        (r'\bLGA[\s\-]?2011\b', 'LGA2011'),  # Sandy Bridge-E / Ivy Bridge-E / Haswell-E
-        (r'\bLGA[\s\-]?1851\b', 'LGA1851'),  # Arrow Lake
-        (r'\bLGA[\s\-]?1700\b', 'LGA1700'),  # Alder/Raptor/Refresh
-        (r'\bLGA[\s\-]?1200\b', 'LGA1200'),  # 10th/11th Gen
-        (r'\bLGA[\s\-]?1151\b', 'LGA1151'),  # 6th-9th Gen
-        (r'\bLGA[\s\-]?1150\b', 'LGA1150'),  # 4th/5th Gen mainstream
-        (r'\bLGA[\s\-]?2066\b', 'LGA2066'),  # HEDT (Skylake-X, etc.)
-        (r'\bLGA[\s\-]?4677\b', 'LGA4677'),  # Xeon
-        
-        # Generic socket capture
-        (r'\bSocket\s+(AM\d)\b', None),  # Capture group for AM sockets
-        (r'\bSocket\s+(LGA\d+)\b', None),  # Capture group for LGA
+        (item["pattern"], item.get("socket"))
+        for item in DATA.get("socket_patterns", [])
     ]
-    
-    # CPU generation patterns for inference and metadata
-    # Maps regex pattern to (generation_name, inferred_socket)
-    GENERATION_PATTERNS = {
-        # AMD Ryzen 9000 series (AM5)
-        r'Ryzen\s+[3579]\s+9\d{3}': ('Ryzen 9000', 'AM5'),
-        r'Ryzen\s+AI\s+9\s+\d{3}': ('Ryzen AI 300', 'AM5'),
-        
-        # AMD Ryzen 8000G series (AM5) - Hawk Point APUs
-        r'Ryzen\s+[3579]\s+8[0-9]{3}G': ('Ryzen 8000G', 'AM5'),
-        r'Ryzen\s+[3579]\s+8[0-9]{3}F': ('Ryzen 8000', 'AM5'),
-        
-        # AMD Ryzen 7000 series (AM5)
-        r'Ryzen\s+[3579]\s+7[0-9]{3}': ('Ryzen 7000', 'AM5'),
-        
-        # AMD Ryzen 5000 series (AM4)
-        r'Ryzen\s+[3579]\s+5[0-9]{3}': ('Ryzen 5000', 'AM4'),
-        
-        # AMD Ryzen 4000 series (AM4) - Renoir desktop APUs
-        r'Ryzen\s+[357]\s+4[0-9]{3}': ('Ryzen 4000', 'AM4'),
-        
-        # AMD Ryzen 3000 series (AM4)
-        r'Ryzen\s+[3579]\s+3[0-9]{3}': ('Ryzen 3000', 'AM4'),
-        
-        # AMD Ryzen 2000 series (AM4) - including APUs like 2200G, 2400G
-        r'Ryzen\s+[357]\s+2[0-9]{3}': ('Ryzen 2000', 'AM4'),
-        
-        # AMD Ryzen 1000 series (AM4)
-        r'Ryzen\s+[357]\s+1[0-9]{3}': ('Ryzen 1000', 'AM4'),
-        
-        # AMD Athlon (AM4)
-        r'Athlon\s+\d{3}GE?': ('Athlon AM4', 'AM4'),
-        r'Athlon\s+PRO': ('Athlon PRO AM4', 'AM4'),
-        
-        # Intel Core Ultra 200 (Arrow Lake - LGA1851)
-        r'Core\s+Ultra\s+[579]\s+2[0-9]{2}': ('Arrow Lake', 'LGA1851'),
-        
-        # Intel 14th Gen (LGA1700)
-        r'Core\s+i[3579][\s\-]?14\d{3}': ('14th Gen Raptor Lake Refresh', 'LGA1700'),
-        r'14th\s+Gen.*Core\s+i[3579]': ('14th Gen Raptor Lake Refresh', 'LGA1700'),
-        
-        # Intel 13th Gen (LGA1700)
-        r'Core\s+i[3579][\s\-]?13\d{3}': ('13th Gen Raptor Lake', 'LGA1700'),
-        r'13th\s+Gen.*Core\s+i[3579]': ('13th Gen Raptor Lake', 'LGA1700'),
-        
-        # Intel 12th Gen (LGA1700)
-        r'Core\s+i[3579][\s\-]?12\d{3}': ('12th Gen Alder Lake', 'LGA1700'),
-        r'12th\s+Gen.*Core\s+i[3579]': ('12th Gen Alder Lake', 'LGA1700'),
-        
-        # Intel 11th Gen (LGA1200)
-        r'Core\s+i[3579][\s\-]?11\d{3}': ('11th Gen Rocket Lake', 'LGA1200'),
-        r'11th\s+Gen.*Core\s+i[3579]': ('11th Gen Rocket Lake', 'LGA1200'),
-        
-        # Intel 10th Gen (LGA1200)
-        r'Core\s+i[3579][\s\-]?10\d{3}': ('10th Gen Comet Lake', 'LGA1200'),
-        r'10th\s+Gen.*Core\s+i[3579]': ('10th Gen Comet Lake', 'LGA1200'),
-        
-        # Intel 9th Gen (LGA1151)
-        r'Core\s+i[3579][\s\-]?9\d{3}': ('9th Gen Coffee Lake Refresh', 'LGA1151'),
-        r'9th\s+Gen.*Core\s+i[3579]': ('9th Gen Coffee Lake Refresh', 'LGA1151'),
-        
-        # Intel 8th Gen (LGA1151)
-        r'Core\s+i[3579][\s\-]?8\d{3}': ('8th Gen Coffee Lake', 'LGA1151'),
-        r'8th\s+Gen.*Core\s+i[3579]': ('8th Gen Coffee Lake', 'LGA1151'),
-        
-        # Intel 7th Gen (LGA1151)
-        r'Core\s+i[3579][\s\-]?7\d{3}': ('7th Gen Kaby Lake', 'LGA1151'),
-        r'7th\s+Gen.*Core\s+i[3579]': ('7th Gen Kaby Lake', 'LGA1151'),
-        
-        # Intel 6th Gen (LGA1151)
-        r'Core\s+i[3579][\s\-]?6\d{3}': ('6th Gen Skylake', 'LGA1151'),
-        r'6th\s+Gen.*Core\s+i[3579]': ('6th Gen Skylake', 'LGA1151'),
-        
-        # Intel 5th Gen HEDT (LGA2011-v3) - i7-5820K, i7-5930K, i7-5960X
-        r'Core\s+i7[\s\-]?5[89]\d{2}[KX]?': ('5th Gen Haswell-E', 'LGA2011-v3'),
-        r'5th\s+Gen.*Core\s+i7[\s\-]?5[89]': ('5th Gen Haswell-E', 'LGA2011-v3'),
-        
-        # Intel 4th Gen HEDT (LGA2011-v3) - i7-4820K, i7-4930K, i7-4960X
-        r'Core\s+i7[\s\-]?4[89]\d{2}[KX]?': ('4th Gen Ivy Bridge-E', 'LGA2011'),
-        r'4th\s+Gen.*Core\s+i7[\s\-]?4[89]': ('4th Gen Ivy Bridge-E', 'LGA2011'),
-    }
-
-    
-    # Spec keys to search for socket information
-    SOCKET_SPEC_KEYS = [
-        'socket', 'cpu_socket', 'processor_socket', 'socket_type',
-        'cpu_socket_type', 'socket_compatibility', 'platform',
-    ]
-    
-    # Spec keys for TDP
-    TDP_SPEC_KEYS = [
-        'tdp', 'thermal_design_power', 'tdp_watt', 'power', 'tdp_w',
-        'processor_tdp', 'default_tdp', 'base_tdp',
-    ]
+    GENERATION_PATTERNS = DATA.get("generation_patterns", [])
+    SOCKET_SPEC_KEYS = DATA.get("socket_spec_keys", [])
+    TDP_SPEC_KEYS = DATA.get("tdp_spec_keys", [])
     
     @property
     def component_type(self) -> str:
@@ -163,7 +53,8 @@ class CPUNormalizer(BaseNormalizer):
             brand: Pre-extracted brand if available
             
         Returns:
-            ExtractionResult with cpu_socket, cpu_brand, cpu_generation, cpu_tdp_watts
+            ExtractionResult with cpu_socket, cpu_brand, cpu_generation, 
+            cpu_tdp_watts, canonical_cpu_name
         """
         attributes = {'component_type': 'cpu'}
         warnings = []
@@ -199,6 +90,11 @@ class CPUNormalizer(BaseNormalizer):
         if tdp:
             attributes['cpu_tdp_watts'] = tdp
         
+        # 5. Extract canonical CPU name for dataset matching
+        canonical_name = self._normalize_cpu_name(title)
+        if canonical_name:
+            attributes['canonical_cpu_name'] = canonical_name
+        
         return ExtractionResult(
             attributes=attributes,
             confidence=confidence,
@@ -218,9 +114,8 @@ class CPUNormalizer(BaseNormalizer):
             Tuple of (socket, confidence, source, generation)
         """
         # Try specs first (highest confidence)
-        socket_val = self._find_spec_value(specs, self.SOCKET_SPEC_KEYS)
-        
-        if socket_val:
+        socket_values = self._find_spec_values(specs, self.SOCKET_SPEC_KEYS)
+        for socket_val in socket_values:
             for pattern, socket_name in self.SOCKET_PATTERNS:
                 match = re.search(pattern, socket_val, re.IGNORECASE)
                 if match:
@@ -242,9 +137,13 @@ class CPUNormalizer(BaseNormalizer):
                     return (result_socket, 0.90, 'title', None)
         
         # Infer from CPU generation/model (lower confidence)
-        for pattern, (gen_name, inferred_socket) in self.GENERATION_PATTERNS.items():
-            if re.search(pattern, title, re.IGNORECASE):
-                return (inferred_socket, 0.75, 'inferred', gen_name)
+        for item in self.GENERATION_PATTERNS:
+            pattern = item.get("pattern")
+            gen_name = item.get("generation")
+            inferred_socket = item.get("socket")
+            if pattern and gen_name and inferred_socket:
+                if re.search(pattern, title, re.IGNORECASE):
+                    return (inferred_socket, 0.75, 'inferred', gen_name)
         
         return (None, 0.0, 'none', None)
     
@@ -253,8 +152,10 @@ class CPUNormalizer(BaseNormalizer):
         # Use provided brand if valid
         if brand:
             brand_upper = brand.upper()
-            if brand_upper in ('AMD', 'INTEL'):
-                return brand_upper
+            if brand_upper == 'AMD':
+                return 'AMD'
+            if brand_upper == 'INTEL':
+                return 'Intel'
         
         # Extract from title
         title_upper = title.upper()
@@ -271,17 +172,19 @@ class CPUNormalizer(BaseNormalizer):
     
     def _extract_generation(self, title: str) -> Optional[str]:
         """Extract CPU generation from title."""
-        for pattern, (gen_name, _) in self.GENERATION_PATTERNS.items():
-            if re.search(pattern, title, re.IGNORECASE):
-                return gen_name
+        for item in self.GENERATION_PATTERNS:
+            pattern = item.get("pattern")
+            gen_name = item.get("generation")
+            if pattern and gen_name:
+                if re.search(pattern, title, re.IGNORECASE):
+                    return gen_name
         return None
     
     def _extract_tdp(self, specs: Dict[str, Any], title: str) -> Optional[int]:
         """Extract TDP in watts."""
         # Try specs
-        tdp_val = self._find_spec_value(specs, self.TDP_SPEC_KEYS)
-        
-        if tdp_val:
+        tdp_values = self._find_spec_values(specs, self.TDP_SPEC_KEYS)
+        for tdp_val in tdp_values:
             # Match patterns like "105W", "105 W", "105 Watt"
             match = re.search(r'(\d+)\s*[Ww](?:att)?', tdp_val)
             if match:
@@ -297,3 +200,182 @@ class CPUNormalizer(BaseNormalizer):
             return int(match.group(1))
         
         return None
+    
+    def _normalize_cpu_name(self, title: str) -> Optional[str]:
+        """
+        Extract normalized/canonical CPU name for dataset matching.
+        
+        Strips marketing terms, generation prefixes, and extra details to get
+        a clean model identifier that matches common dataset formats.
+        
+        Examples:
+            - "Intel 11th Gen Core i5-11500 Rocket Lake Processor" -> "i5-11500"
+            - "Intel Core i5 4460S 2.9 GHz 4-Core LGA1150" -> "i5-4460S"
+            - "AMD Ryzen 5 5600G Processor" -> "Ryzen 5 5600G"
+            - "AMD Ryzen 7 7800X3D 8-Core AM5" -> "Ryzen 7 7800X3D"
+            - "Intel Xeon E5 1650 V3 OEM/Tray 3.5 GHz" -> "Xeon E5-1650 V3"
+        
+        Args:
+            title: CPU product title
+            
+        Returns:
+            Normalized CPU name or None if no pattern matched
+        """
+        if not title:
+            return None
+        
+        # Pattern 1: Intel Core iX-XXXXX (with hyphen)
+        # Matches: i5-11500, i7-14700K, i9-13900KS, i3-12100F
+        match = re.search(
+            r'\b(i[3579])[- ]?(\d{4,5})([KFSTX]{0,3})\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            tier = match.group(1).lower()
+            model = match.group(2)
+            suffix = match.group(3).upper() if match.group(3) else ''
+            return f"{tier}-{model}{suffix}"
+        
+        # Pattern 1b: Intel Core Ultra X XXXK (Arrow Lake)
+        # Matches: Core Ultra 5 245K, Core Ultra 7 265K, Core Ultra 9 285K
+        match = re.search(
+            r'\bCore\s+Ultra\s+([579])\s+(\d{3})([KFSH]?)\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            tier = match.group(1)
+            model = match.group(2)
+            suffix = match.group(3).upper() if match.group(3) else ''
+            return f"Ultra {tier} {model}{suffix}"
+        
+        # Pattern 2: AMD Ryzen X XXXXG/X/F/GT/X3D
+        # Matches: Ryzen 5 5600G, Ryzen 7 7800X3D, Ryzen 9 7950X, Ryzen 5 8400F, Ryzen 5 5500GT
+        match = re.search(
+            r'\bRyzen\s+([3579])\s+(\d{4})(GT|G|X3D|X|F|H)?\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            tier = match.group(1)
+            model = match.group(2)
+            suffix = match.group(3).upper() if match.group(3) else ''
+            return f"Ryzen {tier} {model}{suffix}"
+        
+        # Pattern 3: AMD Ryzen Threadripper
+        # Matches: Threadripper 3970X, Threadripper PRO 5995WX
+        match = re.search(
+            r'\bThreadripper(?:\s+PRO)?\s+(\d{4})[WX]?[X]?\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            model = match.group(1)
+            # Check for PRO in title
+            if re.search(r'\bPRO\b', title, re.IGNORECASE):
+                return f"Threadripper PRO {model}WX"
+            return f"Threadripper {model}X"
+        
+        # Pattern 4: Intel Xeon E5/E3/W/Platinum/Gold/Silver/Bronze
+        # Matches: Xeon E5-2660, Xeon E3-1245 V5, Xeon W-3175X
+        match = re.search(
+            r'\bXeon\s+(E[35]|W|Platinum|Gold|Silver|Bronze)[- ]?(\d{4})[- ]?([VvMmL]?\d?)?\s*([A-Z]?)\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            series = match.group(1).upper()
+            model = match.group(2)
+            version = match.group(3).upper() if match.group(3) else ''
+            suffix = match.group(4).upper() if match.group(4) else ''
+            
+            # Format version properly
+            if version:
+                version = f" {version}" if version.startswith('V') else version
+            
+            return f"Xeon {series}-{model}{version}{suffix}".strip()
+        
+        # Pattern 5: AMD EPYC
+        # Matches: EPYC 7742, EPYC 9654
+        match = re.search(
+            r'\bEPYC\s+(\d{4})[P]?\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            model = match.group(1)
+            return f"EPYC {model}"
+        
+        # Pattern 6: AMD Athlon
+        # Matches: Athlon 3000G, Athlon 200GE
+        match = re.search(
+            r'\bAthlon\s+(\d{3,4})([GE]{0,2})\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            model = match.group(1)
+            suffix = match.group(2).upper() if match.group(2) else ''
+            return f"Athlon {model}{suffix}"
+        
+        # Pattern 7: AMD A-series APU
+        # Matches: A6 7470K, A8 7670K, A10 7850K
+        match = re.search(
+            r'\bA([468]|10|12)[- ]?(\d{4})([K]?)\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            tier = match.group(1)
+            model = match.group(2)
+            suffix = match.group(3).upper() if match.group(3) else ''
+            return f"A{tier}-{model}{suffix}"
+        
+        # Pattern 8: AMD Opteron
+        # Matches: Opteron 6344, Opteron 2356
+        match = re.search(
+            r'\bOpteron\s+(\d{4})\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            model = match.group(1)
+            return f"Opteron {model}"
+        
+        # Pattern 9: Intel Core i7 Extreme
+        # Matches: i7 Extreme 6950X
+        match = re.search(
+            r'\bi7\s+Extreme\s+(\d{4})([X]?)\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            model = match.group(1)
+            suffix = match.group(2).upper() if match.group(2) else 'X'
+            return f"i7-{model}{suffix}"
+        
+        # Pattern 10: Intel Pentium Gold
+        # Matches: Pentium Gold G6400, Pentium Gold G6405
+        match = re.search(
+            r'\bPentium\s+Gold\s+(G\d{4})\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            model = match.group(1).upper()
+            return f"Pentium {model}"
+        
+        # Pattern 11: Intel Celeron
+        # Matches: Celeron G5900, Celeron G6900
+        match = re.search(
+            r'\bCeleron\s+(G\d{4})\b',
+            title,
+            re.IGNORECASE
+        )
+        if match:
+            model = match.group(1).upper()
+            return f"Celeron {model}"
+        
+        return None
+

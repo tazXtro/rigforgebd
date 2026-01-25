@@ -10,6 +10,7 @@ import logging
 from typing import Dict, Any, Optional, Tuple
 
 from .base import BaseNormalizer, ExtractionResult
+from .data_loader import load_normalizer_data
 
 logger = logging.getLogger(__name__)
 
@@ -26,61 +27,18 @@ class RAMNormalizer(BaseNormalizer):
         - memory_ecc_support: Whether ECC is supported
     """
     
-    # DDR type patterns
+    DATA = load_normalizer_data("ram")
     DDR_PATTERNS = [
-        (r'\bDDR5\b', 'DDR5'),
-        (r'\bDDR4\b', 'DDR4'),
-        (r'\bDDR3\b', 'DDR3'),
+        (item["pattern"], item.get("type"))
+        for item in DATA.get("ddr_patterns", [])
     ]
-    
-    # Speed patterns for different notations
-    SPEED_PATTERNS = [
-        # DDR5-6000, DDR4-3200 format
-        r'DDR[45][\s\-](\d{4,5})',
-        # PC5-48000 format (divide by 8 for MT/s)
-        r'PC[45][\s\-](\d{5})',
-        # Plain MHz: 6000MHz, 3200 MHz
-        r'(\d{4,5})\s*(?:MHz|MT/s)',
-        # Speed in specs
-        r'(?:speed|frequency|clock)[:\s]*(\d{4,5})',
-    ]
-    
-    # Capacity patterns
-    CAPACITY_PATTERNS = [
-        # Kit format: 32GB (2x16GB), 16GB (2x8GB)
-        r'(\d+)\s*GB\s*\(\s*(\d+)\s*x\s*(\d+)\s*GB\s*\)',
-        # Simple format: 16GB, 32 GB
-        r'(\d+)\s*GB',
-    ]
-    
-    # Module count patterns
-    MODULE_PATTERNS = [
-        r'(\d+)\s*x\s*\d+\s*GB',  # 2x8GB, 2 x 16GB
-        r'\((\d+)\s*x\s*\d+\s*GB\)',  # (2x8GB)
-        r'(\d+)\s*Pack',  # 2-Pack
-        r'Dual\s*(?:Channel|Kit)',  # Dual Channel = 2
-        r'Quad\s*(?:Channel|Kit)',  # Quad Channel = 4
-    ]
-    
-    # Spec keys
-    MEMORY_TYPE_SPEC_KEYS = [
-        'memory_type', 'type', 'ddr', 'ram_type', 'technology',
-    ]
-    
-    MEMORY_SPEED_SPEC_KEYS = [
-        'speed', 'frequency', 'clock', 'memory_speed', 'ram_speed',
-        'data_rate', 'transfer_rate', 'mhz', 'mt_s',
-    ]
-    
-    MEMORY_CAPACITY_SPEC_KEYS = [
-        'capacity', 'size', 'memory_size', 'total_capacity',
-        'kit_capacity', 'ram_size', 'memory_capacity',
-    ]
-    
-    MEMORY_MODULES_SPEC_KEYS = [
-        'modules', 'sticks', 'dimms', 'pieces', 'quantity',
-        'kit_type', 'configuration', 'module_count',
-    ]
+    SPEED_PATTERNS = DATA.get("speed_patterns", [])
+    CAPACITY_PATTERNS = DATA.get("capacity_patterns", [])
+    MODULE_PATTERNS = DATA.get("module_patterns", [])
+    MEMORY_TYPE_SPEC_KEYS = DATA.get("memory_type_spec_keys", [])
+    MEMORY_SPEED_SPEC_KEYS = DATA.get("memory_speed_spec_keys", [])
+    MEMORY_CAPACITY_SPEC_KEYS = DATA.get("memory_capacity_spec_keys", [])
+    MEMORY_MODULES_SPEC_KEYS = DATA.get("memory_modules_spec_keys", [])
     
     @property
     def component_type(self) -> str:
@@ -182,15 +140,15 @@ class RAMNormalizer(BaseNormalizer):
     ) -> Tuple[Optional[int], str]:
         """Extract memory speed in MHz."""
         # Try specs
-        speed_val = self._find_spec_value(specs, self.MEMORY_SPEED_SPEC_KEYS)
-        
-        if speed_val:
+        speed_values = self._find_spec_values(specs, self.MEMORY_SPEED_SPEC_KEYS)
+        for speed_val in speed_values:
             for pattern in self.SPEED_PATTERNS:
                 match = re.search(pattern, speed_val, re.IGNORECASE)
                 if match:
                     speed = int(match.group(1))
                     # PC5 format: divide by 8
-                    if 'PC' in pattern and speed > 10000:
+                    is_pc_format = pattern.startswith('PC') or pattern.startswith(r'PC')
+                    if is_pc_format and speed > 10000:
                         speed = speed // 8
                     if 1600 <= speed <= 10000:
                         return (speed, 'specs')
@@ -200,7 +158,8 @@ class RAMNormalizer(BaseNormalizer):
             match = re.search(pattern, title, re.IGNORECASE)
             if match:
                 speed = int(match.group(1))
-                if 'PC' in pattern and speed > 10000:
+                is_pc_format = pattern.startswith('PC') or pattern.startswith(r'PC')
+                if is_pc_format and speed > 10000:
                     speed = speed // 8
                 if 1600 <= speed <= 10000:
                     return (speed, 'title')
@@ -219,9 +178,13 @@ class RAMNormalizer(BaseNormalizer):
         # Try specs for capacity
         cap_val = self._find_spec_value(specs, self.MEMORY_CAPACITY_SPEC_KEYS)
         if cap_val:
-            match = re.search(r'(\d+)\s*GB', cap_val, re.IGNORECASE)
-            if match:
-                capacity = int(match.group(1))
+            kit_match = re.search(r'(\d+)\s*x\s*(\d+)\s*GB', cap_val, re.IGNORECASE)
+            if kit_match:
+                capacity = int(kit_match.group(1)) * int(kit_match.group(2))
+            else:
+                match = re.search(r'(\d+)\s*GB', cap_val, re.IGNORECASE)
+                if match:
+                    capacity = int(match.group(1))
         
         # Try specs for module count
         mod_val = self._find_spec_value(specs, self.MEMORY_MODULES_SPEC_KEYS)

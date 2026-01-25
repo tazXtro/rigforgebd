@@ -10,6 +10,7 @@ import logging
 from typing import Dict, Any, Optional, Tuple
 
 from .base import BaseNormalizer, ExtractionResult
+from .data_loader import load_normalizer_data
 
 logger = logging.getLogger(__name__)
 
@@ -28,118 +29,21 @@ class MotherboardNormalizer(BaseNormalizer):
         - memory_max_capacity_gb: Maximum supported memory capacity
     """
     
-    # Chipset to socket mapping for inference
-    CHIPSET_TO_SOCKET = {
-        # AMD AM4 chipsets
-        'A320': 'AM4', 'B350': 'AM4', 'X370': 'AM4',
-        'B450': 'AM4', 'X470': 'AM4',
-        'A520': 'AM4', 'B550': 'AM4', 'X570': 'AM4',
-        
-        # AMD AM5 chipsets
-        'A620': 'AM5', 'B650': 'AM5', 'B650E': 'AM5',
-        'B850': 'AM5', 'B850E': 'AM5',
-        'X670': 'AM5', 'X670E': 'AM5',
-        'X870': 'AM5', 'X870E': 'AM5',
-        
-        # AMD Threadripper (sTRX4/sWRX8)
-        'TRX40': 'sTRX4', 'WRX80': 'sWRX8',
-        
-        # Intel LGA1200 chipsets (10th/11th Gen)
-        'H410': 'LGA1200', 'B460': 'LGA1200', 'H470': 'LGA1200', 'Z490': 'LGA1200',
-        'H510': 'LGA1200', 'B560': 'LGA1200', 'H570': 'LGA1200', 'Z590': 'LGA1200',
-        
-        # Intel LGA1700 chipsets (12th/13th/14th Gen)
-        'H610': 'LGA1700', 'B660': 'LGA1700', 'H670': 'LGA1700', 'Z690': 'LGA1700',
-        'B760': 'LGA1700', 'H770': 'LGA1700', 'Z790': 'LGA1700',
-        
-        # Intel LGA1851 chipsets (Arrow Lake / Core Ultra 200)
-        'Z890': 'LGA1851', 'B860': 'LGA1851', 'H810': 'LGA1851',
-        
-        # Intel LGA1151 chipsets (6th-9th Gen)
-        'H110': 'LGA1151', 'B150': 'LGA1151', 'H170': 'LGA1151', 'Z170': 'LGA1151',
-        'B250': 'LGA1151', 'H270': 'LGA1151', 'Z270': 'LGA1151',
-        'H310': 'LGA1151', 'B360': 'LGA1151', 'H370': 'LGA1151', 'Z370': 'LGA1151',
-        'B365': 'LGA1151', 'Z390': 'LGA1151',
-        
-        # Intel HEDT (LGA2066)
-        'X299': 'LGA2066',
-    }
-    
-    # Chipset to default DDR type (for newer platforms)
-    CHIPSET_TO_DDR = {
-        # AM5 is DDR5 only
-        'A620': 'DDR5', 'B650': 'DDR5', 'B650E': 'DDR5',
-        'B850': 'DDR5', 'B850E': 'DDR5',
-        'X670': 'DDR5', 'X670E': 'DDR5', 'X870': 'DDR5', 'X870E': 'DDR5',
-        
-        # LGA1851 is DDR5 only
-        'Z890': 'DDR5', 'B860': 'DDR5', 'H810': 'DDR5',
-        
-        # LGA1700 can be DDR4 or DDR5 (need to check specs)
-        # AM4 is DDR4 only
-        'A320': 'DDR4', 'B350': 'DDR4', 'X370': 'DDR4',
-        'B450': 'DDR4', 'X470': 'DDR4',
-        'A520': 'DDR4', 'B550': 'DDR4', 'X570': 'DDR4',
-    }
-    
-    # Socket patterns
+    DATA = load_normalizer_data("motherboard")
+    CHIPSET_TO_SOCKET = DATA.get("chipset_to_socket", {})
+    CHIPSET_TO_DDR = DATA.get("chipset_to_ddr", {})
     SOCKET_PATTERNS = [
-        (r'\bAM5\b', 'AM5'),
-        (r'\bAM4\b', 'AM4'),
-        (r'\bSocket\s*AM5\b', 'AM5'),
-        (r'\bSocket\s*AM4\b', 'AM4'),
-        (r'\bLGA[\s\-]?1851\b', 'LGA1851'),
-        (r'\bLGA[\s\-]?1700\b', 'LGA1700'),
-        (r'\bLGA[\s\-]?1200\b', 'LGA1200'),
-        (r'\bLGA[\s\-]?1151\b', 'LGA1151'),
-        (r'\bLGA[\s\-]?2066\b', 'LGA2066'),
-        (r'\bsTR[X]?4\b', 'sTRX4'),
-        (r'\bsWRX8\b', 'sWRX8'),
+        (item["pattern"], item.get("socket"))
+        for item in DATA.get("socket_patterns", [])
     ]
-    
-    # Form factor patterns
-    FORM_FACTORS = {
-        'E-ATX': [r'\bE[\s\-]?ATX\b', r'\bExtended\s*ATX\b', r'\bEATX\b'],
-        'ATX': [r'\bATX\b'],  # Must check after E-ATX
-        'Micro-ATX': [r'\bMicro[\s\-]?ATX\b', r'\bmATX\b', r'\bM[\s\-]?ATX\b'],
-        'Mini-ITX': [r'\bMini[\s\-]?ITX\b', r'\bITX\b'],
-        'Mini-DTX': [r'\bMini[\s\-]?DTX\b', r'\bDTX\b'],
-    }
-    
-    # Spec keys
-    SOCKET_SPEC_KEYS = [
-        'socket', 'cpu_socket', 'processor_socket', 'socket_type',
-        'supported_cpu', 'cpu_support', 'processor_support',
-    ]
-    
-    CHIPSET_SPEC_KEYS = [
-        'chipset', 'chipset_model', 'motherboard_chipset', 'platform',
-    ]
-    
-    FORM_FACTOR_SPEC_KEYS = [
-        'form_factor', 'form', 'size', 'motherboard_form_factor',
-        'board_form_factor', 'format',
-    ]
-    
-    MEMORY_TYPE_SPEC_KEYS = [
-        'memory_type', 'ram_type', 'memory', 'ddr', 'memory_support',
-        'supported_memory', 'ram_support',
-    ]
-    
-    MEMORY_SLOTS_SPEC_KEYS = [
-        'memory_slots', 'ram_slots', 'dimm_slots', 'dimm', 'slots',
-        'memory_slot', 'no_of_dimm', 'number_of_dimm',
-    ]
-    
-    MEMORY_SPEED_SPEC_KEYS = [
-        'memory_speed', 'ram_speed', 'max_memory_speed', 'memory_frequency',
-        'ddr_speed', 'max_ddr_speed', 'supported_memory_speed',
-    ]
-    
-    MEMORY_CAPACITY_SPEC_KEYS = [
-        'max_memory', 'maximum_memory', 'max_ram', 'memory_capacity',
-        'max_memory_capacity', 'supported_memory_capacity',
-    ]
+    FORM_FACTORS = DATA.get("form_factors", {})
+    SOCKET_SPEC_KEYS = DATA.get("socket_spec_keys", [])
+    CHIPSET_SPEC_KEYS = DATA.get("chipset_spec_keys", [])
+    FORM_FACTOR_SPEC_KEYS = DATA.get("form_factor_spec_keys", [])
+    MEMORY_TYPE_SPEC_KEYS = DATA.get("memory_type_spec_keys", [])
+    MEMORY_SLOTS_SPEC_KEYS = DATA.get("memory_slots_spec_keys", [])
+    MEMORY_SPEED_SPEC_KEYS = DATA.get("memory_speed_spec_keys", [])
+    MEMORY_CAPACITY_SPEC_KEYS = DATA.get("memory_capacity_spec_keys", [])
     
     @property
     def component_type(self) -> str:
@@ -207,6 +111,11 @@ class MotherboardNormalizer(BaseNormalizer):
         max_capacity = self._extract_memory_max_capacity(specs)
         if max_capacity:
             attributes['memory_max_capacity_gb'] = max_capacity
+        
+        # 8. Extract canonical motherboard name for dataset matching
+        canonical_name = self._normalize_mobo_name(title, brand, chipset)
+        if canonical_name:
+            attributes['canonical_mobo_name'] = canonical_name
         
         return ExtractionResult(
             attributes=attributes,
@@ -296,11 +205,7 @@ class MotherboardNormalizer(BaseNormalizer):
         """Extract DDR type (DDR4 or DDR5)."""
         # Try specs (scan all relevant keys to avoid missing DDR when the first
         # matched key doesn't contain DDR info)
-        mem_values = []
-        for key, value in specs.items():
-            normalized = self._normalize_key(key)
-            if normalized in self.MEMORY_TYPE_SPEC_KEYS and value is not None:
-                mem_values.append(str(value))
+        mem_values = self._find_spec_values(specs, self.MEMORY_TYPE_SPEC_KEYS)
 
         for mem_val in mem_values:
             if re.search(r'\bDDR5\b', mem_val, re.IGNORECASE):
@@ -309,7 +214,7 @@ class MotherboardNormalizer(BaseNormalizer):
                 return ('DDR4', 'specs')
 
         # If none of the matched keys include DDR, scan all spec values
-        specs_text = ' '.join(str(v) for v in specs.values() if v)
+        specs_text = ' '.join(self._stringify_value(v) for v in specs.values() if v is not None)
         has_ddr5 = bool(re.search(r'\bDDR5\b', specs_text, re.IGNORECASE))
         has_ddr4 = bool(re.search(r'\bDDR4\b', specs_text, re.IGNORECASE))
 
@@ -399,3 +304,135 @@ class MotherboardNormalizer(BaseNormalizer):
                     return capacity
         
         return None
+    
+    def _normalize_mobo_name(
+        self,
+        title: str,
+        brand: Optional[str],
+        chipset: Optional[str],
+    ) -> Optional[str]:
+        """
+        Extract normalized/canonical motherboard name for dataset matching.
+        
+        Format: "Brand Chipset Model [Features]"
+        Examples:
+            - "MSI B550M PRO-VDH WIFI DDR4 Motherboard" -> "MSI B550M PRO-VDH WIFI"
+            - "ASUS ROG STRIX B650E-E GAMING WIFI" -> "ASUS B650E-E ROG STRIX"
+            - "Gigabyte Z790 AORUS Elite AX DDR5" -> "Gigabyte Z790 AORUS Elite AX"
+        
+        Args:
+            title: Motherboard product title
+            brand: Pre-extracted brand if available
+            chipset: Pre-extracted chipset if available
+            
+        Returns:
+            Normalized motherboard name or None if pattern not matched
+        """
+        if not title:
+            return None
+        
+        # Known motherboard brands
+        BRANDS = [
+            'ASUS', 'MSI', 'Gigabyte', 'ASRock', 'Biostar', 'EVGA', 
+            'NZXT', 'Colorful', 'Maxsun', 'GALAX'
+        ]
+        
+        # Extract brand from title if not provided
+        extracted_brand = brand
+        if not extracted_brand:
+            for b in BRANDS:
+                if re.search(rf'\b{re.escape(b)}\b', title, re.IGNORECASE):
+                    extracted_brand = b
+                    break
+        
+        if not extracted_brand:
+            return None
+        
+        # Normalize brand casing
+        brand_normalized = extracted_brand.upper() if extracted_brand.upper() == 'ASUS' else extracted_brand.title()
+        if brand_normalized.upper() == 'ASROCK':
+            brand_normalized = 'ASRock'
+        
+        # Build chipset pattern from known chipsets
+        all_chipsets = list(self.CHIPSET_TO_SOCKET.keys())
+        chipset_pattern = r'\b(' + '|'.join(re.escape(c) for c in all_chipsets) + r')[ME]?\b'
+        
+        # Extract chipset from title if not provided
+        extracted_chipset = chipset
+        if not extracted_chipset:
+            match = re.search(chipset_pattern, title, re.IGNORECASE)
+            if match:
+                extracted_chipset = match.group(0).upper()
+        
+        if not extracted_chipset:
+            return None
+        
+        # Extract model name - look for text after chipset
+        # Common patterns: PRO-VDH, AORUS Elite, ROG STRIX, TUF Gaming
+        model_parts = []
+        
+        # Important product line identifiers to preserve
+        PRODUCT_LINES = [
+            'ROG STRIX', 'ROG CROSSHAIR', 'TUF GAMING', 'PRIME', 'ProArt',
+            'MAG', 'MEG', 'MPG', 'PRO', 'AORUS', 'MASTER', 'ELITE', 'ULTRA',
+            'GAMING', 'GAMING PLUS', 'CARBON', 'ACE', 'FORMULA', 'EXTREME',
+            'PHANTOM', 'TAICHI', 'STEEL LEGEND', 'PG', 'CREATOR'
+        ]
+        
+        # Important features to preserve
+        FEATURES = ['WIFI', 'WI-FI', 'AX', 'WIFI6', 'WIFI 6', 'WIFI6E', 'WIFI 6E']
+        
+        # Words to strip from model extraction
+        STRIP_WORDS = [
+            'Motherboard', 'Gaming Motherboard', 'Mainboard', 'LGA1700',
+            'LGA1200', 'LGA1151', 'AM4', 'AM5', 'Socket', 'DDR4', 'DDR5',
+            'ATX', 'Micro-ATX', 'Mini-ITX', 'mATX', 'E-ATX', 'EATX',
+            'Gen5', 'Gen4', 'Gen3', 'PCIe', 'USB 3', 'RGB', 'ARGB'
+        ]
+        
+        # Extract product line
+        for pl in PRODUCT_LINES:
+            if re.search(rf'\b{re.escape(pl)}\b', title, re.IGNORECASE):
+                model_parts.append(pl.upper())
+                break
+        
+        # Try to extract the model number/name after chipset
+        chipset_idx = title.upper().find(extracted_chipset.upper())
+        if chipset_idx >= 0:
+            after_chipset = title[chipset_idx + len(extracted_chipset):].strip()
+            
+            # Clean and extract meaningful model parts
+            for word in STRIP_WORDS:
+                after_chipset = re.sub(
+                    rf'\b{re.escape(word)}\b',
+                    '',
+                    after_chipset,
+                    flags=re.IGNORECASE
+                )
+            
+            # Extract first meaningful model segment
+            model_match = re.match(
+                r'^[\s\-]*([A-Za-z0-9][A-Za-z0-9\-]{1,20}(?:\s+[A-Za-z0-9\-]{2,15}){0,2})',
+                after_chipset.strip()
+            )
+            if model_match:
+                model_name = model_match.group(1).strip()
+                if model_name and model_name.upper() not in [p.upper() for p in model_parts]:
+                    model_parts.append(model_name.upper())
+        
+        # Check for WiFi feature
+        for feat in FEATURES:
+            if re.search(rf'\b{re.escape(feat)}\b', title, re.IGNORECASE):
+                feat_normalized = feat.upper().replace('-', '').replace(' ', '')
+                if feat_normalized not in [p.upper() for p in model_parts]:
+                    model_parts.append(feat_normalized)
+                break
+        
+        # Construct canonical name
+        model_str = ' '.join(model_parts) if model_parts else ''
+        canonical = f"{brand_normalized} {extracted_chipset}"
+        if model_str:
+            canonical = f"{canonical} {model_str}"
+        
+        return canonical.strip()
+

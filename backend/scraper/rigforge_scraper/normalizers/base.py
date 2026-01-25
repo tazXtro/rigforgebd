@@ -9,7 +9,7 @@ import re
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -120,13 +120,36 @@ class BaseNormalizer(ABC):
         Returns:
             The spec value as string, or None if not found
         """
+        values = self._find_spec_values(specs, possible_keys)
+        if values:
+            return values[0]
+        return None
+
+    def _find_spec_values(
+        self,
+        specs: Dict[str, Any],
+        possible_keys: List[str],
+    ) -> List[str]:
+        """
+        Find all spec values for multiple possible key variations.
+
+        Args:
+            specs: Raw specs dictionary
+            possible_keys: List of normalized key names to try
+
+        Returns:
+            List of matching spec values as strings
+        """
+        values: List[str] = []
         for key in specs:
             normalized = self._normalize_key(key)
             if normalized in possible_keys:
-                value = specs[key]
+                value = specs.get(key)
                 if value is not None:
-                    return str(value).strip()
-        return None
+                    text = self._stringify_value(value)
+                    if text:
+                        values.append(text)
+        return values
     
     def _extract_number(self, text: str) -> Optional[int]:
         """
@@ -177,5 +200,25 @@ class BaseNormalizer(ABC):
         Returns:
             Combined text string for pattern matching
         """
-        spec_values = ' '.join(str(v) for v in specs.values() if v)
-        return f"{title} {spec_values}"
+        spec_values = ' '.join(
+            self._stringify_value(v) for v in specs.values() if v is not None
+        )
+        return f"{title} {spec_values}".strip()
+
+    def _stringify_value(self, value: Any) -> str:
+        """
+        Convert spec values to a normalized string.
+
+        Handles lists/tuples/sets by joining, and dicts by joining values.
+        """
+        if value is None:
+            return ''
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, dict):
+            parts = [self._stringify_value(v) for v in value.values() if v is not None]
+            return ' '.join(p for p in parts if p)
+        if isinstance(value, (list, tuple, set)):
+            parts = [self._stringify_value(v) for v in value if v is not None]
+            return ' '.join(p for p in parts if p)
+        return str(value).strip()

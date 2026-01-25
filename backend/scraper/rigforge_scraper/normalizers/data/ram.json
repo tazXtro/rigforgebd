@@ -1,0 +1,61 @@
+{
+  "ddr_patterns": [
+    {"pattern": "\\bDDR5\\b", "type": "DDR5"},
+    {"pattern": "\\bDDR4\\b", "type": "DDR4"},
+    {"pattern": "\\bDDR3\\b", "type": "DDR3"}
+  ],
+  "speed_patterns": [
+    "DDR[45][\\s\\-](\\d{4,5})",
+    "PC[45][\\s\\-](\\d{5})",
+    "(\\d{4,5})\\s*(?:MHz|MT/s)",
+    "(?:speed|frequency|clock)[:\\s]*(\\d{4,5})"
+  ],
+  "capacity_patterns": [
+    "(\\d+)\\s*GB\\s*\\(\\s*(\\d+)\\s*x\\s*(\\d+)\\s*GB\\s*\\)",
+    "(\\d+)\\s*GB"
+  ],
+  "module_patterns": [
+    "(\\d+)\\s*x\\s*\\d+\\s*GB",
+    "\\((\\d+)\\s*x\\s*\\d+\\s*GB\\)",
+    "(\\d+)\\s*Pack",
+    "Dual\\s*(?:Channel|Kit)",
+    "Quad\\s*(?:Channel|Kit)"
+  ],
+  "memory_type_spec_keys": [
+    "memory_type",
+    "type",
+    "ddr",
+    "ram_type",
+    "technology"
+  ],
+  "memory_speed_spec_keys": [
+    "speed",
+    "frequency",
+    "clock",
+    "memory_speed",
+    "ram_speed",
+    "data_rate",
+    "transfer_rate",
+    "mhz",
+    "mt_s"
+  ],
+  "memory_capacity_spec_keys": [
+    "capacity",
+    "size",
+    "memory_size",
+    "total_capacity",
+    "kit_capacity",
+    "ram_size",
+    "memory_capacity"
+  ],
+  "memory_modules_spec_keys": [
+    "modules",
+    "sticks",
+    "dimms",
+    "pieces",
+    "quantity",
+    "kit_type",
+    "configuration",
+    "module_count"
+  ]
+}
