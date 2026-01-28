@@ -26,7 +26,11 @@ class ProductItem(scrapy.Item):
     brand = scrapy.Field()
     in_stock = scrapy.Field()
     specs = scrapy.Field()
+    specs_source_url = scrapy.Field()  # URL where specs were scraped from
     
     # Metadata (not sent to Django)
     scraped_at = scrapy.Field()
     source_page = scrapy.Field()
+    
+    # Internal pipeline fields (for passing data between pipelines)
+    _product_id = scrapy.Field()  # Set by SupabaseIngestionPipeline for CompatibilityExtractionPipeline

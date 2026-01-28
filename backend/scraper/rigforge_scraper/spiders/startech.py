@@ -123,13 +123,16 @@ class StartechSpider(BaseRetailerSpider):
         """
         Parse a single product card from the listing page.
         
+        Instead of creating the item directly, this method extracts basic info
+        and follows the product URL to get detailed specifications.
+        
         Args:
             card: Scrapy selector for the product card
             category: Product category
             source_url: URL of the listing page
             
         Returns:
-            ProductItem or None if parsing fails
+            Request to product detail page, or None if parsing fails
         """
         try:
             # Extract product name - Star Tech uses ".p-item-name" or "h4.p-item-name"
@@ -191,21 +194,113 @@ class StartechSpider(BaseRetailerSpider):
             # Extract brand
             brand = self.extract_brand(name)
             
-            # Create product item
-            return self.create_product_item(
-                name=name,
-                price=price,
-                product_url=product_url,
-                category=category,
-                image_url=image_url,
-                brand=brand,
-                in_stock=in_stock,
-                source_page=source_url,
+            # Store item data in meta and follow to product detail page for specs
+            item_data = {
+                'name': name,
+                'price': price,
+                'product_url': product_url,
+                'category': category,
+                'image_url': image_url,
+                'brand': brand,
+                'in_stock': in_stock,
+                'source_page': source_url,
+            }
+            
+            # Follow product URL to get detailed specs
+            return scrapy.Request(
+                product_url,
+                callback=self.parse_product_detail,
+                meta={'item_data': item_data},
             )
             
         except Exception as e:
             logger.error(f"Error parsing product card: {e}\n{traceback.format_exc()}")
             return None
+    
+    def parse_product_detail(self, response):
+        """
+        Parse product detail page to extract specifications.
+        
+        Args:
+            response: Scrapy response from product detail page
+            
+        Yields:
+            ProductItem with specifications
+        """
+        item_data = response.meta['item_data']
+        
+        # Star Tech uses ".specification-table" or "table.data-table" for specs
+        specs = self.parse_specs_table(response, {
+            'table': '.specification-table, table.data-table, .product-specification table',
+            'row': 'tr',
+            'key': 'td:first-child::text',
+            'value': 'td:last-child::text',
+        })
+        
+        # If no specs found, try alternative selectors
+        if not specs:
+            # Try key-value pairs in product info section
+            spec_rows = response.css('.product-info-table tr, .short-description li')
+            for row in spec_rows:
+                key = row.css('td:first-child::text, strong::text').get()
+                value = row.css('td:last-child::text, span::text').get()
+                if key and value:
+                    key = self.normalize_text(key).rstrip(':')
+                    value = self.normalize_text(value)
+                    if key and value:
+                        specs[key] = value
+        
+        # Also extract Key Features section (important for socket, cores, etc.)
+        # Key Features are often in a list format like "CPU Socket: AM4" or "Socket: AM5"
+        key_features = response.css('.short-description li::text, .product-short-description li::text').getall()
+        
+        # Also try the raw text from the key-features section
+        if not key_features:
+            key_features = response.css('.key-feature li::text, #key-feature li::text').getall()
+        
+        for feature in key_features:
+            feature = self.normalize_text(feature) if feature else ''
+            if ':' in feature:
+                # Parse "Key: Value" format
+                parts = feature.split(':', 1)
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    value = parts[1].strip()
+                    if key and value and key not in specs:
+                        # Normalize common key names
+                        normalized_key = key.replace(' ', '_').lower()
+                        if 'socket' in normalized_key:
+                            specs['Socket'] = value
+                        elif 'core' in normalized_key and 'thread' not in normalized_key:
+                            specs['Cores'] = value
+                        elif 'thread' in normalized_key:
+                            specs['Threads'] = value
+                        elif 'clock' in normalized_key or 'speed' in normalized_key:
+                            specs['Clock Speed'] = value
+                        elif 'cache' in normalized_key:
+                            if 'l1' in normalized_key:
+                                specs['L1 Cache'] = value
+                            elif 'l2' in normalized_key:
+                                specs['L2 Cache'] = value
+                            elif 'l3' in normalized_key:
+                                specs['L3 Cache'] = value
+                            else:
+                                specs['Cache'] = value
+                        elif 'model' in normalized_key:
+                            specs['Model'] = value
+                        else:
+                            # Store as-is if not recognized
+                            specs[key] = value
+        
+        logger.debug(f"Extracted {len(specs)} specs for: {item_data['name']}")
+        
+        # Create and yield the product item with specs
+        yield self.create_product_item(
+            **item_data,
+            specs=specs,
+            specs_source_url=response.url,
+        )
+
     
     def follow_pagination(self, response):
         """

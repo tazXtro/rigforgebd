@@ -164,6 +164,7 @@ class SupabaseIngestionPipeline:
             "brand": adapter.get("brand"),
             "in_stock": adapter.get("in_stock", True),
             "specs": adapter.get("specs", {}),
+            "specs_source_url": adapter.get("specs_source_url"),
         }
         
         try:
@@ -171,6 +172,9 @@ class SupabaseIngestionPipeline:
             if result:
                 self.items_saved += 1
                 logger.debug(f"Saved to DB: {scraped_data['name']}")
+                
+                # Store product_id in item for compatibility pipeline
+                adapter['_product_id'] = result['product']['id']
             else:
                 self.items_failed += 1
                 logger.warning(f"Failed to save: {scraped_data['name']}")
@@ -179,4 +183,149 @@ class SupabaseIngestionPipeline:
             logger.error(f"Error saving to DB: {e}")
         
         return item
+
+
+class CompatibilityExtractionPipeline:
+    """
+    Pipeline for extracting compatibility attributes from scraped products.
+    
+    Uses component-specific normalizers to extract canonical compatibility
+    fields (socket, chipset, DDR type, etc.) and stores them in product_compat.
+    
+    This pipeline runs after SupabaseIngestionPipeline to ensure the product
+    exists in the database before storing compatibility data.
+    """
+    
+    # Map category names to normalizer types
+    # Must handle all variations from scrapers (title case, lowercase, plural, slug)
+    CATEGORY_TO_TYPE = {
+        # CPU variations
+        'processor': 'cpu',
+        'processors': 'cpu',
+        'cpu': 'cpu',
+        'cpus': 'cpu',
+        # Motherboard variations
+        'motherboard': 'motherboard',
+        'motherboards': 'motherboard',
+        'mobo': 'motherboard',
+        # RAM/Memory variations
+        'ram': 'ram',
+        'memory': 'ram',
+        'ram-memory': 'ram',
+        'memory-ram': 'ram',
+    }
+    
+    def __init__(self):
+        self.normalizers = {}
+        self.compat_repository = None
+        self.items_extracted = 0
+        self.items_skipped = 0
+        self.items_failed = 0
+    
+    def open_spider(self, spider):
+        """Initialize normalizers and repository when spider opens."""
+        import os
+        import sys
+        
+        # Add backend to path
+        backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if backend_path not in sys.path:
+            sys.path.insert(0, backend_path)
+        
+        # Configure Django settings
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+        
+        import django
+        django.setup()
+        
+        # Import normalizers
+        from rigforge_scraper.normalizers import (
+            CPUNormalizer,
+            MotherboardNormalizer,
+            RAMNormalizer,
+        )
+        
+        # Initialize normalizers
+        self.normalizers = {
+            'cpu': CPUNormalizer(),
+            'motherboard': MotherboardNormalizer(),
+            'ram': RAMNormalizer(),
+        }
+        
+        # Import repository
+        from products.repositories import compat_repository
+        self.compat_repository = compat_repository
+        
+        logger.info("CompatibilityExtractionPipeline initialized")
+    
+    def close_spider(self, spider):
+        """Log summary when spider closes."""
+        logger.info(
+            f"Compatibility extraction complete: {self.items_extracted} extracted, "
+            f"{self.items_skipped} skipped (not relevant), "
+            f"{self.items_failed} failed"
+        )
+    
+    def process_item(self, item, spider):
+        """Extract compatibility attributes and store in product_compat."""
+        adapter = ItemAdapter(item)
+        
+        # Check if we have product_id from ingestion pipeline
+        product_id = adapter.get('_product_id')
+        if not product_id:
+            # No product_id means product wasn't saved (or ingestion pipeline not enabled)
+            self.items_skipped += 1
+            return item
+        
+        # Get category and determine if relevant for compatibility
+        category_raw = adapter.get('category', '')
+        category = self._normalize_category(category_raw)
+        component_type = self.CATEGORY_TO_TYPE.get(category)
+        
+        if not component_type:
+            # Not a compatibility-relevant category
+            self.items_skipped += 1
+            return item
+        
+        # Get the appropriate normalizer
+        normalizer = self.normalizers.get(component_type)
+        if not normalizer:
+            self.items_skipped += 1
+            return item
+        
+        try:
+            # Extract compatibility attributes
+            result = normalizer.extract(
+                title=adapter.get('name', ''),
+                specs=adapter.get('specs', {}),
+                brand=adapter.get('brand'),
+            )
+            
+            # Save to product_compat table
+            compat_data = result.to_dict()
+            save_result = self.compat_repository.upsert(product_id, compat_data)
+            
+            if save_result:
+                self.items_extracted += 1
+                logger.debug(
+                    f"Saved compat for '{adapter.get('name', '')}': "
+                    f"confidence={result.confidence:.2f}, source={result.source}"
+                )
+            else:
+                self.items_failed += 1
+                logger.warning(f"Failed to save compat for: {adapter.get('name', '')}")
+            
+        except Exception as e:
+            self.items_failed += 1
+            logger.error(f"Error extracting/saving compat: {e}")
+        
+        return item
+
+    def _normalize_category(self, category: str) -> str:
+        """Normalize category to a consistent lookup key."""
+        if not category:
+            return ''
+        key = category.strip().lower()
+        key = re.sub(r'[\s_/]+', '-', key)
+        return key.strip('-')
 

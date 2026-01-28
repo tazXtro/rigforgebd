@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
 import { UserSyncProvider } from "@/components/providers/UserSyncProvider";
+import { BuilderProvider } from "@/components/builder";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -42,7 +43,9 @@ export default function RootLayout({
             disableTransitionOnChange
           >
             <UserSyncProvider>
-              {children}
+              <BuilderProvider>
+                {children}
+              </BuilderProvider>
             </UserSyncProvider>
           </ThemeProvider>
         </body>

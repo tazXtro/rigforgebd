@@ -19,6 +19,7 @@ from products.repositories.supabase import (
     product_repository,
     retailer_repository,
     price_repository,
+    product_specs_repository,
 )
 from products.repositories.exceptions import (
     ProductRepositoryError,
@@ -44,10 +45,12 @@ class ProductIngestionService:
         product_repo=None,
         retailer_repo=None,
         price_repo=None,
+        specs_repo=None,
     ):
         self.product_repo = product_repo or product_repository
         self.retailer_repo = retailer_repo or retailer_repository
         self.price_repo = price_repo or price_repository
+        self.specs_repo = specs_repo or product_specs_repository
     
     def ingest_scraped_product(self, scraped_data: Dict[str, Any]) -> Optional[dict]:
         """
@@ -102,6 +105,19 @@ class ProductIngestionService:
                 scraped_data=scraped_data,
             )
             price = self.price_repo.upsert_by_url(price_data)
+            
+            # Handle specs if present
+            specs = scraped_data.get('specs', {})
+            if specs and product:
+                try:
+                    self.specs_repo.upsert(
+                        product_id=product['id'],
+                        specs=specs,
+                        source_url=scraped_data.get('specs_source_url'),
+                    )
+                    logger.debug(f"Saved specs for: {product['name']}")
+                except Exception as e:
+                    logger.warning(f"Failed to save specs for {product['name']}: {e}")
             
             logger.info(f"Successfully ingested product: {product['name']}")
             
@@ -164,7 +180,7 @@ class ProductIngestionService:
             "category_slug": slugify(category, lowercase=True),
             "brand": scraped_data.get("brand", self._extract_brand(name)),
             "image_url": scraped_data.get("image_url"),
-            "specs": scraped_data.get("specs", {}),
+            # Note: specs are stored separately in product_specs table, not here
         }
     
     def _prepare_price_data(
@@ -394,6 +410,7 @@ class ProductService:
         search: Optional[str] = None,
         brands: Optional[List[str]] = None,
         sort_by: Optional[str] = None,
+        product_ids: Optional[List[str]] = None,
         min_price: Optional[float] = None,
         max_price: Optional[float] = None,
         retailers: Optional[List[str]] = None,
@@ -421,6 +438,18 @@ class ProductService:
             Dict with 'products' list and 'pagination' metadata
         """
         try:
+            if product_ids is not None and len(product_ids) == 0:
+                return {
+                    "products": [],
+                    "pagination": {
+                        "page": page,
+                        "page_size": page_size,
+                        "total_count": 0,
+                        "total_pages": 0,
+                        "has_next": False,
+                        "has_prev": False,
+                    },
+                }
             if grouped:
                 # Return products with all retailers grouped under one product
                 # This is used by the system builder
@@ -431,6 +460,7 @@ class ProductService:
                     search=search,
                     brands=brands,
                     sort_by=sort_by,
+                    product_ids=product_ids,
                     min_price=min_price,
                     max_price=max_price,
                     retailers=retailers,
@@ -445,6 +475,7 @@ class ProductService:
                     search=search,
                     brands=brands,
                     sort_by=sort_by,
+                    product_ids=product_ids,
                     min_price=min_price,
                     max_price=max_price,
                     retailers=retailers,
@@ -472,6 +503,7 @@ class ProductService:
         search: Optional[str],
         brands: Optional[List[str]],
         sort_by: Optional[str],
+        product_ids: Optional[List[str]],
         min_price: Optional[float],
         max_price: Optional[float],
         retailers: Optional[List[str]],
@@ -490,6 +522,7 @@ class ProductService:
             search=search,
             brand=None,  # Don't filter by brand at DB level, we'll do it after
             sort_by=None,  # We'll sort after adding prices
+            product_ids=product_ids,
         )
         
         all_products = result["products"]
@@ -621,6 +654,7 @@ class ProductService:
         search: Optional[str],
         brands: Optional[List[str]],
         sort_by: Optional[str],
+        product_ids: Optional[List[str]],
         min_price: Optional[float],
         max_price: Optional[float],
         retailers: Optional[List[str]],
@@ -635,15 +669,22 @@ class ProductService:
         
         Example: If "RTX 4090" is sold at StarTech and Techland,
         it will appear as 2 separate cards in the grid.
+        
+        This method uses database-level pagination for efficiency,
+        querying the prices table directly with product data joined.
         """
-        # Fetch all products matching filters (excluding brand - we'll filter that after)
-        result = self.product_repo.get_paginated(
-            page=1,
-            page_size=10000,  # Get all matching products
+        # Use the optimized database-level pagination
+        result = self.price_repo.get_listings_paginated(
+            page=page,
+            page_size=page_size,
             category_slug=category_slug,
             search=search,
-            brand=None,  # Don't filter by brand at DB level, we'll do it after
-            sort_by=None,  # We'll sort after creating listings
+            brands=brands,
+            sort_by=sort_by,
+            product_ids=product_ids,
+            min_price=min_price,
+            max_price=max_price,
+            retailers=retailers,
         )
         
         raw_listings = result.get("listings", [])
@@ -662,26 +703,7 @@ class ProductService:
                 },
             }
         
-        # Batch fetch ALL prices
-        product_ids = [p["id"] for p in all_products]
-        all_prices = self.price_repo.get_by_product_ids(product_ids)
-        
-        # Create a dict for quick product lookup
-        products_by_id = {p["id"]: p for p in all_products}
-        
-        # Count retailers per product and track in-stock counts
-        retailers_per_product = {}  # product_id -> list of prices
-        for price in all_prices:
-            pid = price["product_id"]
-            if pid not in retailers_per_product:
-                retailers_per_product[pid] = []
-            retailers_per_product[pid].append(price)
-        
-        # "Explode" products into listings (one per retailer)
-        # Each listing is a copy of the product with a single retailer
-        if brands:
-            logger.info(f"Filtering products by brands: {brands}")
-        
+        # Transform the raw listings to the expected format
         listings = []
         for price in raw_listings:
             product = price.get("products", {})
@@ -690,47 +712,15 @@ class ProductService:
             if not product:
                 continue
             
-            # Apply brand filter
-            if brands and len(brands) > 0:
-                product_brand = product.get("brand", "")
-                if not product_brand:
-                    continue
-                # Case-insensitive exact match
-                brand_match = any(brand.lower() == product_brand.lower() for brand in brands)
-                if not brand_match:
-                    logger.debug(f"Brand filter: excluding product '{product.get('name')}' with brand '{product_brand}' (looking for {brands})")
-                    continue
-            
-            retailer_data = price.get("retailers", {})
-            retailer_slug = retailer_data.get("slug", "")
-            price_value = float(price["price"])
-            
-            # Apply price filter
-            if min_price is not None and price_value < min_price:
-                continue
-            if max_price is not None and price_value > max_price:
-                continue
-            
-            # Apply retailer filter
-            if retailers and len(retailers) > 0:
-                if retailer_slug not in retailers:
-                    continue
-            
-            product_prices = retailers_per_product.get(price["product_id"], [])
-            
-            # Calculate totals for this product across all retailers
-            total_retailers = len(product_prices)
-            in_stock_count = sum(1 for p in product_prices if p.get("in_stock", True))
-            
-            # Create a new listing entry (product copy with single retailer)
+            # Create a listing entry
             listing = {
                 **product,  # Copy all product fields
                 "listing_id": price["id"],  # Unique ID for this listing
                 "total_retailers": 1,  # Will be calculated if needed
                 "in_stock_count": 1 if price.get("in_stock", True) else 0,
                 "retailers": [{
-                    "name": retailer_data.get("name", "Unknown"),
-                    "price": price_value,
+                    "name": retailer_data.get("name", "Unknown") if retailer_data else "Unknown",
+                    "price": float(price["price"]),
                     "inStock": price.get("in_stock", True),
                     "url": price["product_url"],
                 }],
@@ -782,6 +772,60 @@ class ProductService:
         except ProductRepositoryError as e:
             logger.error(f"Failed to get available brands: {e}")
             return []
+    
+    def get_product_by_slug(
+        self,
+        category_slug: str,
+        product_slug: str,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get complete product details by category and slug.
+        
+        Includes specs and all retailer prices for the product detail page.
+        
+        Args:
+            category_slug: Category slug
+            product_slug: Product slug
+            
+        Returns:
+            Product dict with specs and retailers, or None if not found
+        """
+        try:
+            # Get product by slug
+            product = self.product_repo.get_by_slug(product_slug)
+            if not product:
+                return None
+            
+            # Verify category matches
+            if product.get('category_slug') != category_slug:
+                return None
+            
+            # Get specs
+            specs_record = product_specs_repository.get_by_product_id(product['id'])
+            product['specs'] = specs_record['specs'] if specs_record else {}
+            
+            # Get all retailer prices with URLs
+            prices = self.price_repo.get_by_product_id(product['id'])
+            retailers = []
+            for price in prices:
+                retailer_info = price.get('retailers', {})
+                retailers.append({
+                    'name': retailer_info.get('name', 'Unknown'),
+                    'slug': retailer_info.get('slug', ''),
+                    'price': float(price.get('price', 0)),
+                    'inStock': price.get('in_stock', True),
+                    'url': price.get('product_url', ''),
+                })
+            
+            # Sort by price (lowest first)
+            retailers.sort(key=lambda r: r['price'])
+            product['retailers'] = retailers
+            
+            return product
+            
+        except ProductRepositoryError as e:
+            logger.error(f"Failed to get product by slug: {e}")
+            return None
 
 
 # Singleton instances

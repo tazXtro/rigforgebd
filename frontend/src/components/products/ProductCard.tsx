@@ -11,6 +11,7 @@ import {
     Package,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { AddToBuildButton } from "./AddToBuildButton"
 
 export interface ProductRetailer {
     name: string
@@ -124,12 +125,15 @@ export function ProductCard({ product, viewMode = "grid" }: ProductCardProps) {
                     </div>
                 </div>
 
-                <Link
-                    href={`/products/${product.categorySlug}/${product.slug}`}
-                    className="self-center px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-                >
-                    Compare Prices
-                </Link>
+                <div className="flex items-center gap-2 self-center">
+                    <AddToBuildButton product={product} variant="compact" />
+                    <Link
+                        href={`/products/${product.categorySlug}/${product.slug}`}
+                        className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                    >
+                        Compare Prices
+                    </Link>
+                </div>
             </motion.div>
         )
     }
@@ -214,14 +218,15 @@ export function ProductCard({ product, viewMode = "grid" }: ProductCardProps) {
                     </div>
                 </div>
 
-                {/* Stock Status */}
-                <div className="mt-2 pt-2 border-t border-border/50">
+                {/* Stock Status and Add Button */}
+                <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between">
                     <p className={cn(
                         "text-xs font-medium",
                         inStockCount > 0 ? "text-green-600 dark:text-green-400" : "text-red-500"
                     )}>
                         {inStockCount > 0 ? `${inStockCount} store${inStockCount > 1 ? "s" : ""} have stock` : "Out of stock"}
                     </p>
+                    <AddToBuildButton product={product} variant="compact" />
                 </div>
             </div>
         </motion.div>

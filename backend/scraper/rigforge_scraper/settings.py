@@ -44,9 +44,13 @@ HTTPCACHE_EXPIRATION_SECS = 3600
 HTTPCACHE_DIR = "httpcache"
 
 # Configure pipelines
+# Note: SupabaseIngestionPipeline and CompatibilityExtractionPipeline are 
+# enabled dynamically via --save flag in run_spider.py
 ITEM_PIPELINES = {
     "rigforge_scraper.pipelines.CleaningPipeline": 100,
     "rigforge_scraper.pipelines.ValidationPipeline": 200,
+    # "rigforge_scraper.pipelines.SupabaseIngestionPipeline": 300,  # Enabled via --save
+    # "rigforge_scraper.pipelines.CompatibilityExtractionPipeline": 400,  # Runs after ingestion
 }
 
 # Logging

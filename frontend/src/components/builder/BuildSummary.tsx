@@ -1,18 +1,21 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { Download, Share2, Save, Trash2, ShoppingCart } from "lucide-react"
+import { Download, Save, Trash2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { useBuilder } from "./BuilderContext"
 import { COMPONENT_CONFIGS } from "./constants"
+import { generateBuildPDF } from "./generateBuildPDF"
 
 export function BuildSummary() {
-  const { slots, getTotalPrice, clearBuild } = useBuilder()
+  const { slots, getTotalPrice, getBaseTotal, getMinPriceTotal, clearBuild } = useBuilder()
 
   const totalPrice = getTotalPrice()
+  const baseTotal = getBaseTotal()
+  const minPriceTotal = getMinPriceTotal()
   const selectedSlots = slots.filter((slot) => slot.isSelected)
   const totalComponents = selectedSlots.length
 
@@ -115,20 +118,18 @@ export function BuildSummary() {
 
         {/* Action Buttons */}
         <div className="space-y-2">
-          <Button className="w-full gap-2" disabled={!isComplete}>
-            <ShoppingCart className="h-4 w-4" />
-            Proceed to Checkout
+          <Button 
+            className="w-full gap-2" 
+            disabled={totalComponents === 0}
+            onClick={() => generateBuildPDF({ slots, baseTotal, minPriceTotal })}
+          >
+            <Download className="h-4 w-4" />
+            Download PDF
           </Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="sm" className="gap-2" disabled={totalComponents === 0}>
-              <Save className="h-4 w-4" />
-              Save
-            </Button>
-            <Button variant="outline" size="sm" className="gap-2" disabled={totalComponents === 0}>
-              <Share2 className="h-4 w-4" />
-              Share
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" className="w-full gap-2" disabled={totalComponents === 0}>
+            <Save className="h-4 w-4" />
+            Save Build
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -138,19 +139,6 @@ export function BuildSummary() {
           >
             <Trash2 className="h-4 w-4" />
             Clear Build
-          </Button>
-        </div>
-
-        {/* Export Options */}
-        <div className="pt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full gap-2 text-muted-foreground"
-            disabled={totalComponents === 0}
-          >
-            <Download className="h-4 w-4" />
-            Export as PDF
           </Button>
         </div>
       </CardContent>
