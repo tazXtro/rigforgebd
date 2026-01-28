@@ -341,7 +341,9 @@ class TechlandSpider(BaseRetailerSpider):
         next_page_btn = response.css('[aria-label="Go to next page"]')
         
         if not next_page_btn:
-            next_page_btn = response.xpath('//*[@wire:click="nextPage"]')
+            # Use CSS selector instead of XPath to avoid namespace prefix issues
+            # (XPath interprets 'wire:click' as a namespace prefix due to the colon)
+            next_page_btn = response.css('[wire\\:click="nextPage"]')
         
         if next_page_btn:
             # Get current page from URL

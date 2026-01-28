@@ -41,6 +41,7 @@ class UserSyncView(APIView):
         
         Request body:
             - email (required): User's email from auth provider
+            - username (optional): User's unique username
             - display_name (optional): User's display name
             - avatar_url (optional): User's avatar URL
             
@@ -57,6 +58,7 @@ class UserSyncView(APIView):
         
         user = user_service.get_or_create_user(
             email=serializer.validated_data["email"],
+            username=serializer.validated_data.get("username"),
             display_name=serializer.validated_data.get("display_name"),
             avatar_url=serializer.validated_data.get("avatar_url"),
             provider=serializer.validated_data.get("provider"),

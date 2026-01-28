@@ -1,11 +1,20 @@
 import { Build, BuildFormData, BuildComment, BuildsFilter, BuildsResponse } from "@/components/builds/types"
 
-// For testing phase: store data in Desktop folder
-// In production, this would call actual backend API
+// Backend API base URL
+// NEXT_PUBLIC_API_URL should be "http://localhost:8000/api" (already includes /api)
+// Note: Django requires trailing slashes on all URLs
+const BACKEND_API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
+const API_BASE = `${BACKEND_API_BASE}/builds`
 
-const API_BASE = "/api/builds"
-
-export async function getBuilds(filter?: BuildsFilter, page = 1, pageSize = 12): Promise<BuildsResponse> {
+/**
+ * Get paginated list of builds with optional filtering and sorting
+ */
+export async function getBuilds(
+    filter?: BuildsFilter,
+    page = 1,
+    pageSize = 12,
+    userEmail?: string
+): Promise<BuildsResponse> {
     const params = new URLSearchParams({
         page: page.toString(),
         pageSize: pageSize.toString(),
@@ -14,16 +23,25 @@ export async function getBuilds(filter?: BuildsFilter, page = 1, pageSize = 12):
     if (filter?.sortBy) params.append("sortBy", filter.sortBy)
     if (filter?.featured !== undefined) params.append("featured", filter.featured.toString())
     if (filter?.search) params.append("search", filter.search)
+    if (userEmail) params.append("userEmail", userEmail)
 
-    const response = await fetch(`${API_BASE}?${params.toString()}`)
+    const response = await fetch(`${API_BASE}/?${params.toString()}`)
     if (!response.ok) {
         throw new Error("Failed to fetch builds")
     }
     return response.json()
 }
 
-export async function getBuildById(id: string): Promise<Build | null> {
-    const response = await fetch(`${API_BASE}/${id}`)
+/**
+ * Get a single build by ID
+ */
+export async function getBuildById(id: string, userEmail?: string): Promise<Build | null> {
+    const params = new URLSearchParams()
+    if (userEmail) params.append("userEmail", userEmail)
+    
+    const url = params.toString() ? `${API_BASE}/${id}/?${params.toString()}` : `${API_BASE}/${id}/`
+    const response = await fetch(url)
+    
     if (!response.ok) {
         if (response.status === 404) return null
         throw new Error("Failed to fetch build")
@@ -31,28 +49,64 @@ export async function getBuildById(id: string): Promise<Build | null> {
     return response.json()
 }
 
-export async function getFeaturedBuilds(): Promise<Build[]> {
-    const response = await fetch(`${API_BASE}/featured`)
+/**
+ * Get featured builds
+ */
+export async function getFeaturedBuilds(limit = 6, userEmail?: string): Promise<Build[]> {
+    const params = new URLSearchParams({ limit: limit.toString() })
+    if (userEmail) params.append("userEmail", userEmail)
+    
+    const response = await fetch(`${API_BASE}/featured/?${params.toString()}`)
     if (!response.ok) {
         throw new Error("Failed to fetch featured builds")
     }
     return response.json()
 }
 
-export async function createBuild(data: BuildFormData, author: { id: string; username: string; avatarUrl?: string }): Promise<Build> {
-    const response = await fetch(API_BASE, {
+/**
+ * Create a new build
+ * @param data - Build form data
+ * @param author - Author information including email for lookup
+ */
+export async function createBuild(
+    data: BuildFormData,
+    author: { id: string; username: string; email: string; avatarUrl?: string }
+): Promise<Build> {
+    const response = await fetch(`${API_BASE}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, author }),
+        body: JSON.stringify({
+            title: data.title,
+            description: data.description,
+            imageUrl: data.imageUrl,
+            buildDate: data.buildDate,
+            commentsEnabled: data.commentsEnabled,
+            components: data.components,
+            totalPrice: data.totalPrice,
+            author: {
+                id: author.id,
+                username: author.username,
+                email: author.email,
+                avatarUrl: author.avatarUrl,
+            },
+        }),
     })
     if (!response.ok) {
-        throw new Error("Failed to create build")
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.error || "Failed to create build")
     }
     return response.json()
 }
 
-export async function updateBuild(id: string, data: Partial<BuildFormData>): Promise<Build> {
-    const response = await fetch(`${API_BASE}/${id}`, {
+/**
+ * Update an existing build
+ */
+export async function updateBuild(
+    id: string,
+    data: Partial<BuildFormData>,
+    userEmail: string
+): Promise<Build> {
+    const response = await fetch(`${API_BASE}/${id}/?userEmail=${encodeURIComponent(userEmail)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -63,8 +117,11 @@ export async function updateBuild(id: string, data: Partial<BuildFormData>): Pro
     return response.json()
 }
 
-export async function deleteBuild(id: string): Promise<void> {
-    const response = await fetch(`${API_BASE}/${id}`, {
+/**
+ * Delete a build
+ */
+export async function deleteBuild(id: string, userEmail: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/${id}/?userEmail=${encodeURIComponent(userEmail)}`, {
         method: "DELETE",
     })
     if (!response.ok) {
@@ -72,12 +129,20 @@ export async function deleteBuild(id: string): Promise<void> {
     }
 }
 
-// Voting
-export async function voteBuild(buildId: string, userId: string, voteType: "upvote" | "downvote"): Promise<Build> {
-    const response = await fetch(`${API_BASE}/${buildId}/vote`, {
+// ==================== Voting ====================
+
+/**
+ * Vote on a build (upvote or downvote)
+ */
+export async function voteBuild(
+    buildId: string,
+    userEmail: string,
+    voteType: "upvote" | "downvote"
+): Promise<Build> {
+    const response = await fetch(`${API_BASE}/${buildId}/vote/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, voteType }),
+        body: JSON.stringify({ userEmail, voteType }),
     })
     if (!response.ok) {
         throw new Error("Failed to vote on build")
@@ -85,11 +150,14 @@ export async function voteBuild(buildId: string, userId: string, voteType: "upvo
     return response.json()
 }
 
-export async function removeVote(buildId: string, userId: string): Promise<Build> {
-    const response = await fetch(`${API_BASE}/${buildId}/vote`, {
+/**
+ * Remove a vote from a build
+ */
+export async function removeVote(buildId: string, userEmail: string): Promise<Build> {
+    const response = await fetch(`${API_BASE}/${buildId}/vote/`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId }),
+        body: JSON.stringify({ userEmail }),
     })
     if (!response.ok) {
         throw new Error("Failed to remove vote")
@@ -97,24 +165,47 @@ export async function removeVote(buildId: string, userId: string): Promise<Build
     return response.json()
 }
 
-// Comments
-export async function getComments(buildId: string): Promise<BuildComment[]> {
-    const response = await fetch(`${API_BASE}/${buildId}/comments`)
+// ==================== Comments ====================
+
+interface CommentsResponse {
+    comments: BuildComment[]
+    total: number
+    page: number
+    pageSize: number
+}
+
+/**
+ * Get comments for a build
+ */
+export async function getComments(
+    buildId: string,
+    page = 1,
+    pageSize = 20
+): Promise<CommentsResponse> {
+    const params = new URLSearchParams({
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+    })
+    
+    const response = await fetch(`${API_BASE}/${buildId}/comments/?${params.toString()}`)
     if (!response.ok) {
         throw new Error("Failed to fetch comments")
     }
     return response.json()
 }
 
+/**
+ * Add a comment to a build
+ */
 export async function addComment(
     buildId: string,
-    author: { id: string; username: string; avatarUrl?: string },
+    authorEmail: string,
     content: string
 ): Promise<BuildComment> {
-    const response = await fetch(`${API_BASE}/${buildId}/comments`, {
+    const response = await fetch(`${API_BASE}/${buildId}/comments/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ author, content }),
+        body: JSON.stringify({ authorEmail, content }),
     })
     if (!response.ok) {
         throw new Error("Failed to add comment")
@@ -122,24 +213,37 @@ export async function addComment(
     return response.json()
 }
 
-export async function deleteComment(buildId: string, commentId: string): Promise<void> {
-    const response = await fetch(`${API_BASE}/${buildId}/comments/${commentId}`, {
-        method: "DELETE",
+/**
+ * Update a comment
+ */
+export async function updateComment(
+    commentId: string,
+    authorEmail: string,
+    content: string
+): Promise<BuildComment> {
+    const response = await fetch(`${API_BASE}/comments/${commentId}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ authorEmail, content }),
     })
+    if (!response.ok) {
+        throw new Error("Failed to update comment")
+    }
+    return response.json()
+}
+
+/**
+ * Delete a comment
+ */
+export async function deleteComment(
+    commentId: string,
+    userEmail: string
+): Promise<void> {
+    const response = await fetch(
+        `${API_BASE}/comments/${commentId}/?userEmail=${encodeURIComponent(userEmail)}`,
+        { method: "DELETE" }
+    )
     if (!response.ok) {
         throw new Error("Failed to delete comment")
     }
-}
-
-// Feature/unfeature (admin)
-export async function toggleFeatured(buildId: string, featured: boolean): Promise<Build> {
-    const response = await fetch(`${API_BASE}/${buildId}/featured`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ featured }),
-    })
-    if (!response.ok) {
-        throw new Error("Failed to toggle featured status")
-    }
-    return response.json()
 }

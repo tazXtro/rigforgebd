@@ -113,9 +113,17 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
                 totalPrice: getTotalPrice(),
             }
 
+            const email = user.primaryEmailAddress?.emailAddress || ""
+            if (!email) {
+                setError("User email not found. Please try signing in again.")
+                setIsSubmitting(false)
+                return
+            }
+
             await createBuild(buildData, {
                 id: user.id,
-                username: user.username || user.firstName || "Anonymous",
+                username: user.username || email.split("@")[0] || "Anonymous",
+                email: email,
                 avatarUrl: user.imageUrl,
             })
 

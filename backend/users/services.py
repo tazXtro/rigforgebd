@@ -40,6 +40,7 @@ class UserService:
     def get_or_create_user(
         self,
         email: str,
+        username: Optional[str] = None,
         display_name: Optional[str] = None,
         avatar_url: Optional[str] = None,
         provider: Optional[str] = None,
@@ -56,6 +57,7 @@ class UserService:
         
         Args:
             email: User's email address (primary identifier)
+            username: Optional unique username
             display_name: Optional display name
             avatar_url: Optional avatar URL
             provider: Optional auth provider name (e.g., 'clerk')
@@ -70,7 +72,7 @@ class UserService:
             
             if existing_user:
                 # Optionally update profile if new data provided
-                user = self._update_if_needed(existing_user, display_name, avatar_url)
+                user = self._update_if_needed(existing_user, username, display_name, avatar_url)
                 # Link identity if provider info provided
                 self._link_identity_if_needed(user["id"], provider, provider_user_id)
                 return user
@@ -78,7 +80,8 @@ class UserService:
             # Create new user
             user_data = {
                 "email": email,
-                "display_name": display_name or email.split("@")[0],
+                "username": username,
+                "display_name": display_name or username or email.split("@")[0],
                 "avatar_url": avatar_url,
             }
             
@@ -180,6 +183,7 @@ class UserService:
     def _update_if_needed(
         self,
         existing_user: dict,
+        username: Optional[str],
         display_name: Optional[str],
         avatar_url: Optional[str],
     ) -> dict:
@@ -188,6 +192,7 @@ class UserService:
         
         Args:
             existing_user: Current user data from database
+            username: New username (optional)
             display_name: New display name (optional)
             avatar_url: New avatar URL (optional)
             
@@ -195,6 +200,9 @@ class UserService:
             Updated user data or existing user if no updates needed
         """
         updates = {}
+        # Update username if it differs from existing value
+        if username and username != existing_user.get("username"):
+            updates["username"] = username
         if display_name and display_name != existing_user.get("display_name"):
             updates["display_name"] = display_name
         if avatar_url and avatar_url != existing_user.get("avatar_url"):

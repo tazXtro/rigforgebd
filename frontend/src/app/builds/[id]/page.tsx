@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
+import { useUser } from "@clerk/nextjs"
 import { motion } from "framer-motion"
 import { AlertCircle } from "lucide-react"
 import Navbar from "@/components/Navbar"
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button"
 export default function BuildDetailPage() {
     const params = useParams()
     const buildId = params.id as string
+    const { user } = useUser()
 
     const [build, setBuild] = useState<Build | null>(null)
     const [isLoading, setIsLoading] = useState(true)
@@ -25,7 +27,8 @@ export default function BuildDetailPage() {
             if (!buildId) return
 
             try {
-                const data = await getBuildById(buildId)
+                const userEmail = user?.primaryEmailAddress?.emailAddress
+                const data = await getBuildById(buildId, userEmail)
                 if (data) {
                     setBuild(data)
                 } else {
@@ -40,7 +43,7 @@ export default function BuildDetailPage() {
         }
 
         loadBuild()
-    }, [buildId])
+    }, [buildId, user])
 
     return (
         <>

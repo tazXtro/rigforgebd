@@ -25,6 +25,12 @@ class UserSyncSerializer(serializers.Serializer):
         required=True,
         help_text="User's email address from auth provider"
     )
+    username = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=50,
+        help_text="User's unique username"
+    )
     display_name = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -57,6 +63,12 @@ class UserProfileSerializer(serializers.Serializer):
     
     id = serializers.UUIDField(read_only=True)
     email = serializers.EmailField(read_only=True)
+    username = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        max_length=50
+    )
     display_name = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -78,6 +90,12 @@ class UserProfileUpdateSerializer(serializers.Serializer):
     All fields are optional - only provided fields will be updated.
     """
     
+    username = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=50,
+        help_text="User's unique username"
+    )
     display_name = serializers.CharField(
         required=False,
         allow_blank=True,

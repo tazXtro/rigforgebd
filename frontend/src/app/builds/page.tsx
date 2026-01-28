@@ -24,9 +24,10 @@ export default function BuildsPage() {
     const loadBuilds = useCallback(async () => {
         setIsLoading(true)
         try {
+            const userEmail = user?.primaryEmailAddress?.emailAddress
             const [buildsData, featuredData] = await Promise.all([
-                getBuilds(filter, page, 12),
-                page === 1 ? getFeaturedBuilds() : Promise.resolve([]),
+                getBuilds(filter, page, 12, userEmail),
+                page === 1 ? getFeaturedBuilds(6, userEmail) : Promise.resolve([]),
             ])
 
             setBuilds(buildsData.builds)
@@ -40,7 +41,7 @@ export default function BuildsPage() {
         } finally {
             setIsLoading(false)
         }
-    }, [filter, page])
+    }, [filter, page, user])
 
     useEffect(() => {
         loadBuilds()
@@ -54,8 +55,14 @@ export default function BuildsPage() {
     const handleVote = async (buildId: string, voteType: "upvote" | "downvote") => {
         if (!user) return
 
+        const email = user.primaryEmailAddress?.emailAddress
+        if (!email) {
+            console.error("User email not found")
+            return
+        }
+
         try {
-            const updatedBuild = await voteBuild(buildId, user.id, voteType)
+            const updatedBuild = await voteBuild(buildId, email, voteType)
 
             // Update in builds list
             setBuilds((prev) =>

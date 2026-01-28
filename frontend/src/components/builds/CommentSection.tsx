@@ -34,8 +34,8 @@ export function CommentSection({ buildId, commentsEnabled, authorId }: CommentSe
 
     const loadComments = async () => {
         try {
-            const data = await getComments(buildId)
-            setComments(data)
+            const response = await getComments(buildId)
+            setComments(response.comments)
         } catch (error) {
             console.error("Failed to load comments:", error)
         } finally {
@@ -48,15 +48,17 @@ export function CommentSection({ buildId, commentsEnabled, authorId }: CommentSe
 
         if (!user || !newComment.trim() || isSubmitting) return
 
+        const email = user.primaryEmailAddress?.emailAddress
+        if (!email) {
+            console.error("User email not found")
+            return
+        }
+
         setIsSubmitting(true)
         try {
             const comment = await addComment(
                 buildId,
-                {
-                    id: user.id,
-                    username: user.username || user.firstName || "Anonymous",
-                    avatarUrl: user.imageUrl,
-                },
+                email,
                 newComment.trim()
             )
             setComments((prev) => [...prev, comment])
@@ -69,11 +71,17 @@ export function CommentSection({ buildId, commentsEnabled, authorId }: CommentSe
     }
 
     const handleDelete = async (commentId: string) => {
-        if (deletingId) return
+        if (deletingId || !user) return
+
+        const email = user.primaryEmailAddress?.emailAddress
+        if (!email) {
+            console.error("User email not found")
+            return
+        }
 
         setDeletingId(commentId)
         try {
-            await deleteComment(buildId, commentId)
+            await deleteComment(commentId, email)
             setComments((prev) => prev.filter((c) => c.id !== commentId))
         } catch (error) {
             console.error("Failed to delete comment:", error)

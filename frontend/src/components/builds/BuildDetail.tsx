@@ -57,9 +57,15 @@ export function BuildDetail({ build: initialBuild, onBuildUpdate }: BuildDetailP
     const handleVote = async (voteType: "upvote" | "downvote") => {
         if (!user || isVoting) return
 
+        const email = user.primaryEmailAddress?.emailAddress
+        if (!email) {
+            console.error("User email not found")
+            return
+        }
+
         setIsVoting(true)
         try {
-            const updatedBuild = await voteBuild(build.id, user.id, voteType)
+            const updatedBuild = await voteBuild(build.id, email, voteType)
             setBuild(updatedBuild)
             onBuildUpdate?.(updatedBuild)
         } catch (error) {
