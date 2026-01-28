@@ -10,6 +10,7 @@ from builds.views import (
     BuildVoteView,
     BuildCommentsView,
     CommentDetailView,
+    UploadBuildImageView,
 )
 
 app_name = "builds"
@@ -18,6 +19,7 @@ urlpatterns = [
     # Builds
     path("", BuildsListView.as_view(), name="builds-list"),
     path("featured/", FeaturedBuildsView.as_view(), name="builds-featured"),
+    path("upload-image/", UploadBuildImageView.as_view(), name="upload-image"),
     path("<uuid:build_id>/", BuildDetailView.as_view(), name="build-detail"),
     
     # Voting

@@ -18,7 +18,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useBuilder } from "@/components/builder"
-import { createBuild } from "@/lib/buildsApi"
+import { createBuild, uploadBuildImage } from "@/lib/buildsApi"
+import { compressImage } from "@/lib/imageCompression"
 import { BuildFormData } from "./types"
 import { cn } from "@/lib/utils"
 
@@ -40,7 +41,10 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
     })
 
     const [imagePreview, setImagePreview] = useState<string | null>(null)
+    const [imageFile, setImageFile] = useState<string | null>(null) // Base64 image data for upload
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const [isUploading, setIsUploading] = useState(false)
+    const [isCompressing, setIsCompressing] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
     const selectedSlots = slots.filter((s) => s.product !== null)
@@ -53,17 +57,43 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
         setFormData((prev) => ({ ...prev, [name]: value }))
     }
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) {
-            // For testing, we'll use a data URL
-            const reader = new FileReader()
-            reader.onloadend = () => {
-                const dataUrl = reader.result as string
-                setImagePreview(dataUrl)
-                setFormData((prev) => ({ ...prev, imageUrl: dataUrl }))
+            // Validate file size (10MB max for input - will be compressed)
+            const maxSize = 10 * 1024 * 1024 // 10MB
+            if (file.size > maxSize) {
+                setError("Image size must be less than 10MB")
+                return
             }
-            reader.readAsDataURL(file)
+            
+            // Validate file type
+            const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]
+            if (!allowedTypes.includes(file.type)) {
+                setError("Please upload a valid image (JPG, PNG, GIF, or WebP)")
+                return
+            }
+            
+            setError(null)
+            setIsCompressing(true)
+            
+            try {
+                // Compress the image before storing
+                const result = await compressImage(file, {
+                    maxDimension: 1920,  // Max 1920px width/height
+                    maxSizeMB: 0.5,      // Target 500KB max
+                    quality: 0.8,        // 80% quality
+                    fileType: "image/webp", // WebP for best compression
+                })
+                
+                setImagePreview(result.dataUrl)
+                setImageFile(result.dataUrl)
+            } catch (err) {
+                console.error("Failed to compress image:", err)
+                setError("Failed to process image. Please try a different image.")
+            } finally {
+                setIsCompressing(false)
+            }
         }
     }
 
@@ -95,7 +125,7 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
             return
         }
 
-        if (!formData.imageUrl) {
+        if (!imageFile) {
             setError("Please upload an image of your build")
             return
         }
@@ -103,21 +133,33 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
         setIsSubmitting(true)
 
         try {
-            const buildData: BuildFormData = {
-                title: formData.title.trim(),
-                description: formData.description.trim(),
-                imageUrl: formData.imageUrl,
-                buildDate: new Date().toISOString(),
-                commentsEnabled: formData.commentsEnabled,
-                components: selectedSlots,
-                totalPrice: getTotalPrice(),
-            }
-
             const email = user.primaryEmailAddress?.emailAddress || ""
             if (!email) {
                 setError("User email not found. Please try signing in again.")
                 setIsSubmitting(false)
                 return
+            }
+
+            // Step 1: Upload image to Supabase Storage
+            setIsUploading(true)
+            const uploadResult = await uploadBuildImage(imageFile, email)
+            setIsUploading(false)
+            
+            if (!uploadResult.success || !uploadResult.url) {
+                setError(uploadResult.error || "Failed to upload image. Please try again.")
+                setIsSubmitting(false)
+                return
+            }
+
+            // Step 2: Create build with the storage URL
+            const buildData: BuildFormData = {
+                title: formData.title.trim(),
+                description: formData.description.trim(),
+                imageUrl: uploadResult.url, // Use the storage URL instead of base64
+                buildDate: new Date().toISOString(),
+                commentsEnabled: formData.commentsEnabled,
+                components: selectedSlots,
+                totalPrice: getTotalPrice(),
             }
 
             await createBuild(buildData, {
@@ -247,7 +289,14 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
                     Build Image <span className="text-destructive">*</span>
                 </Label>
                 <div className="flex flex-col items-center justify-center border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 hover:border-primary/50 transition-colors">
-                    {imagePreview ? (
+                    {isCompressing ? (
+                        <div className="flex flex-col items-center py-8">
+                            <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+                            <span className="text-sm text-muted-foreground">
+                                Optimizing image...
+                            </span>
+                        </div>
+                    ) : imagePreview ? (
                         <div className="relative w-full aspect-video max-w-md">
                             <Image
                                 src={imagePreview}
@@ -262,7 +311,7 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
                                 className="absolute top-2 right-2 h-8 w-8"
                                 onClick={() => {
                                     setImagePreview(null)
-                                    setFormData((prev) => ({ ...prev, imageUrl: "" }))
+                                    setImageFile(null)
                                 }}
                             >
                                 <X className="h-4 w-4" />
@@ -277,7 +326,7 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
                                 Click to upload an image
                             </span>
                             <span className="text-xs text-muted-foreground">
-                                PNG, JPG up to 10MB
+                                PNG, JPG, GIF, WebP up to 10MB (auto-optimized)
                             </span>
                             <input
                                 type="file"
@@ -321,13 +370,13 @@ export function PublishBuildForm({ onSuccess, onCancel }: PublishBuildFormProps)
             <div className="flex items-center gap-3 pt-4">
                 <Button
                     type="submit"
-                    disabled={isSubmitting || !hasComponents}
+                    disabled={isSubmitting || isCompressing || !hasComponents || !imageFile}
                     className="flex-1 gap-2"
                 >
                     {isSubmitting ? (
                         <>
                             <Loader2 className="h-4 w-4 animate-spin" />
-                            Publishing...
+                            {isUploading ? "Uploading image..." : "Publishing..."}
                         </>
                     ) : (
                         <>

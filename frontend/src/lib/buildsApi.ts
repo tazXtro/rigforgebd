@@ -247,3 +247,39 @@ export async function deleteComment(
         throw new Error("Failed to delete comment")
     }
 }
+
+// ==================== Image Upload ====================
+
+interface UploadImageResponse {
+    success: boolean
+    url?: string
+    error?: string
+}
+
+/**
+ * Upload a build image to Supabase Storage
+ * @param imageData - Base64-encoded image data (with data URL prefix)
+ * @param authorEmail - Email of the build author
+ * @returns Object with success status and either URL or error message
+ */
+export async function uploadBuildImage(
+    imageData: string,
+    authorEmail: string
+): Promise<UploadImageResponse> {
+    const response = await fetch(`${API_BASE}/upload-image/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageData, authorEmail }),
+    })
+    
+    const data = await response.json()
+    
+    if (!response.ok) {
+        return {
+            success: false,
+            error: data.error || "Failed to upload image",
+        }
+    }
+    
+    return data
+}

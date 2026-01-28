@@ -94,6 +94,13 @@ const nextConfig: NextConfig = {
         hostname: 'computersourcebd.com',
         pathname: '/**',
       },
+      // Supabase Storage for build images
+      // Uses NEXT_PUBLIC_SUPABASE_PROJECT_ID env var (e.g., "agwaqrhwnasjhmyyhylz")
+      {
+        protocol: 'https',
+        hostname: `${process.env.NEXT_PUBLIC_SUPABASE_PROJECT_ID || 'agwaqrhwnasjhmyyhylz'}.supabase.co`,
+        pathname: '/storage/v1/object/public/**',
+      },
     ],
     // Allow data URLs for testing phase (build images)
     dangerouslyAllowSVG: true,

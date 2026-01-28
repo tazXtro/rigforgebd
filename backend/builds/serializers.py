@@ -202,3 +202,16 @@ class UpdateCommentSerializer(serializers.Serializer):
         max_length=2000,
         help_text="Updated comment content"
     )
+
+
+class UploadBuildImageSerializer(serializers.Serializer):
+    """Serializer for uploading a build image to storage."""
+    
+    imageData = serializers.CharField(
+        required=True,
+        help_text="Base64-encoded image data (with data URL prefix)"
+    )
+    authorEmail = serializers.EmailField(
+        required=True,
+        help_text="Email of the build author"
+    )

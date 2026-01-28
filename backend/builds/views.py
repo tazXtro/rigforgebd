@@ -25,6 +25,7 @@ from builds.serializers import (
     RemoveVoteSerializer,
     CreateCommentSerializer,
     UpdateCommentSerializer,
+    UploadBuildImageSerializer,
 )
 
 
@@ -448,3 +449,55 @@ class CommentDetailView(APIView):
             )
         
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class UploadBuildImageView(APIView):
+    """
+    Upload a build image to Supabase Storage.
+    
+    POST /api/builds/upload-image/
+    """
+    
+    def post(self, request):
+        """
+        Upload an image to storage and return the public URL.
+        
+        Request body:
+            - imageData (str): Base64-encoded image data with data URL prefix
+            - authorEmail (str): Email of the build author
+            
+        Returns:
+            - success (bool): Whether upload was successful
+            - url (str): Public URL of the uploaded image (on success)
+            - error (str): Error message (on failure)
+        """
+        serializer = UploadBuildImageSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(
+                {"success": False, "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get author ID from email
+        from users.repositories.supabase import user_repository
+        author_email = serializer.validated_data["authorEmail"]
+        author = user_repository.get_by_email(author_email)
+        
+        if not author:
+            return Response(
+                {"success": False, "error": "User not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Upload image to storage
+        from builds.storage_service import build_storage_service
+        result = build_storage_service.upload_build_image(
+            image_data=serializer.validated_data["imageData"],
+            author_id=author["id"],
+        )
+        
+        if result["success"]:
+            return Response(result, status=status.HTTP_201_CREATED)
+        else:
+            return Response(result, status=status.HTTP_400_BAD_REQUEST)
