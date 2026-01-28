@@ -36,9 +36,14 @@ export interface PaginatedProductsResponse {
  * 
  * Best practice: Server-side pagination reduces payload size
  * and initial load time significantly.
+ * 
+ * By default, products are grouped (same product from different retailers
+ * appears once with all retailers listed). Set grouped=false for exploded view.
  */
 export async function fetchProducts(params?: ProductsQueryParams): Promise<PaginatedProductsResponse> {
-    const response = await api.get<PaginatedProductsResponse>('/products/', { params });
+    // Default to grouped view for product browsing
+    const mergedParams = { grouped: true, ...params };
+    const response = await api.get<PaginatedProductsResponse>('/products/', { params: mergedParams });
     return response.data;
 }
 

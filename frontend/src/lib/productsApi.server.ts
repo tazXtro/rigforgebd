@@ -69,6 +69,8 @@ export async function fetchProductsServer(
     if (params?.compat_mode) searchParams.set('compat_mode', params.compat_mode);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.page_size) searchParams.set('page_size', String(params.page_size));
+    // Always group products by default for browsing (show all retailers under one product)
+    searchParams.set('grouped', 'true');
 
     const query = searchParams.toString();
     const url = `${API_BASE}/products/${query ? `?${query}` : ''}`;

@@ -61,7 +61,7 @@ class ProductListQuerySerializer(serializers.Serializer):
     max_price = serializers.IntegerField(required=False, min_value=0)
     retailers = serializers.CharField(required=False)  # Comma-separated retailer slugs
     in_stock = serializers.BooleanField(required=False)
-    grouped = serializers.BooleanField(required=False, default=False)  # If true, group all retailers under one product
+    grouped = serializers.BooleanField(required=False, default=True)  # Group all retailers under one product (default: True for browsing)
     # Pagination parameters
     page = serializers.IntegerField(required=False, default=1, min_value=1)
     page_size = serializers.IntegerField(required=False, default=24, min_value=1, max_value=100)
