@@ -1049,6 +1049,83 @@ class PriceRepository:
                 original_error=e
             ) from e
 
+    @retry_on_socket_error(max_retries=3, base_delay=0.1)
+    def mark_stale_as_out_of_stock(
+        self,
+        retailer_id: str,
+        scrape_cutoff_time: datetime,
+    ) -> int:
+        """
+        Mark products that weren't in the latest scrape as out-of-stock.
+        
+        Any product_price for this retailer where:
+        - last_scraped_at < scrape_cutoff_time
+        - in_stock = true
+        
+        will be set to in_stock = false.
+        
+        This handles the "staleness detection" problem: when a product disappears
+        from a retailer's scrape results, it means the product is no longer
+        available at that retailer.
+        
+        Args:
+            retailer_id: The retailer's UUID whose products to check
+            scrape_cutoff_time: Timestamp when the current scrape batch started.
+                                Products scraped before this time are considered stale.
+        
+        Returns:
+            Number of records marked as out-of-stock
+        """
+        try:
+            # First, find stale records that need updating
+            # (Supabase doesn't return count on update, so we need to query first)
+            cutoff_iso = scrape_cutoff_time.isoformat()
+            
+            response = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("id")
+                .eq("retailer_id", retailer_id)
+                .eq("in_stock", True)
+                .lt("last_scraped_at", cutoff_iso)
+                .execute()
+            )
+            
+            stale_records = response.data if response and response.data else []
+            
+            if not stale_records:
+                logger.debug(f"No stale records found for retailer {retailer_id}")
+                return 0
+            
+            stale_count = len(stale_records)
+            stale_ids = [r["id"] for r in stale_records]
+            
+            # Update all stale records to in_stock = false
+            update_data = {
+                "in_stock": False,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            
+            # Batch update in chunks to avoid issues with large lists
+            BATCH_SIZE = 100
+            for i in range(0, len(stale_ids), BATCH_SIZE):
+                batch = stale_ids[i:i + BATCH_SIZE]
+                self.client.table(self.TABLE_NAME).update(update_data).in_("id", batch).execute()
+            
+            logger.info(
+                f"Marked {stale_count} products as out-of-stock for retailer {retailer_id} "
+                f"(scraped before {cutoff_iso})"
+            )
+            
+            return stale_count
+            
+        except Exception as e:
+            logger.error(f"Failed to mark stale products as out-of-stock: {e}")
+            raise ProductRepositoryError(
+                "Failed to mark stale products as out-of-stock",
+                original_error=e
+            ) from e
+
 
 # Lazy singleton instances
 product_repository = ProductRepository()

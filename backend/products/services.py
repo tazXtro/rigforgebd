@@ -12,6 +12,7 @@ Follows clean architecture principles:
 
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from slugify import slugify
 
@@ -134,17 +135,31 @@ class ProductIngestionService:
             logger.error(f"Database error during product ingestion: {e}")
             return None
     
-    def ingest_batch(self, scraped_items: List[Dict[str, Any]]) -> Dict[str, int]:
+    def ingest_batch(
+        self,
+        scraped_items: List[Dict[str, Any]],
+        retailer_slug: Optional[str] = None,
+    ) -> Dict[str, int]:
         """
-        Ingest a batch of scraped products.
+        Ingest a batch of scraped products with automatic staleness detection.
+        
+        When retailer_slug is provided, any products from that retailer that 
+        were NOT included in this batch will be marked as out-of-stock. This 
+        handles the case where products disappear from scrape results.
         
         Args:
             scraped_items: List of scraped product dictionaries
+            retailer_slug: Optional retailer slug for staleness detection.
+                           If provided, products from this retailer not in 
+                           this batch will be marked as out-of-stock.
             
         Returns:
-            Dict with counts: {"success": N, "failed": M}
+            Dict with counts: {"success": N, "failed": M, "marked_out_of_stock": K}
         """
-        results = {"success": 0, "failed": 0}
+        # Record scrape start time for staleness detection
+        scrape_start_time = datetime.now(timezone.utc)
+        
+        results = {"success": 0, "failed": 0, "marked_out_of_stock": 0}
         
         for item in scraped_items:
             try:
@@ -156,6 +171,29 @@ class ProductIngestionService:
             except Exception as e:
                 logger.error(f"Unexpected error ingesting item: {e}")
                 results["failed"] += 1
+        
+        # After processing batch, mark stale products as out-of-stock
+        if retailer_slug:
+            try:
+                retailer = self.retailer_repo.get_by_slug(retailer_slug)
+                if retailer:
+                    stale_count = self.price_repo.mark_stale_as_out_of_stock(
+                        retailer_id=retailer["id"],
+                        scrape_cutoff_time=scrape_start_time,
+                    )
+                    results["marked_out_of_stock"] = stale_count
+                    if stale_count > 0:
+                        logger.info(
+                            f"Staleness detection: marked {stale_count} products "
+                            f"as out-of-stock for retailer '{retailer_slug}'"
+                        )
+                else:
+                    logger.warning(
+                        f"Staleness detection skipped: retailer '{retailer_slug}' not found"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to run staleness detection: {e}")
+                # Don't fail the entire batch due to staleness detection failure
         
         logger.info(f"Batch ingestion complete: {results}")
         return results
