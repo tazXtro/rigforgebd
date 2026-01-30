@@ -1,14 +1,20 @@
 """
 Techland spider for scraping techlandbd.com.
 
-Uses Playwright for JavaScript rendering as the site relies heavily on JS.
+Techland uses Livewire/Alpine.js with heavy JavaScript rendering.
+Product specifications are extracted from JSON-LD structured data
+embedded in each product page.
 """
 
+import html
+import json
 import logging
+import re
 import traceback
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, parse_qs
 
 import scrapy
+from scrapy_playwright.page import PageMethod
 
 from rigforge_scraper.spiders.base import BaseRetailerSpider
 
@@ -48,11 +54,12 @@ class TechlandSpider(BaseRetailerSpider):
         "processor": "https://www.techlandbd.com/pc-components/processor",
         "graphics-card": "https://www.techlandbd.com/pc-components/graphics-card",
         "motherboard": "https://www.techlandbd.com/pc-components/motherboard",
-        "ram": "https://www.techlandbd.com/pc-components/ram",
-        "storage": "https://www.techlandbd.com/pc-components/storage",
+        "ram": "https://www.techlandbd.com/pc-components/shop-desktop-ram",
+        "storage": "https://www.techlandbd.com/pc-components/solid-state-drive",
         "power-supply": "https://www.techlandbd.com/pc-components/power-supply",
-        "casing": "https://www.techlandbd.com/pc-components/casing",
-        "cooling": "https://www.techlandbd.com/pc-components/cooler",
+        "casing": "https://www.techlandbd.com/pc-components/computer-case",
+        "cooling": "https://www.techlandbd.com/pc-components/cpu-cooler",
+        "monitor": "https://www.techlandbd.com/monitor-and-display/computer-monitor",
     }
     
     # Maximum pages to scrape per category (prevents excessive Playwright click chains)
@@ -96,8 +103,6 @@ class TechlandSpider(BaseRetailerSpider):
         
         Extracts product information from the JS-rendered listing page.
         """
-        from urllib.parse import urlparse, parse_qs
-        
         category = self.get_category(response.url)
         
         # Get current page number from URL
@@ -249,7 +254,9 @@ class TechlandSpider(BaseRetailerSpider):
                 'source_page': source_url,
             }
             
-            # Follow product URL to get detailed specs (with Playwright for JS rendering)
+            # Follow product URL to get detailed specs
+            # Note: Specs are embedded in JSON-LD and wire:initial-data, so no need for
+            # Playwright tab clicking - a simple request is sufficient
             return self.make_request(
                 product_url,
                 callback=self.parse_product_detail,
@@ -264,6 +271,9 @@ class TechlandSpider(BaseRetailerSpider):
         """
         Parse Techland product detail page to extract specifications.
         
+        Techland stores product specs in JSON-LD structured data (schema.org Product).
+        Falls back to Livewire wire:initial-data if JSON-LD is unavailable.
+        
         Args:
             response: Scrapy response from product detail page
             
@@ -272,53 +282,124 @@ class TechlandSpider(BaseRetailerSpider):
         """
         item_data = response.meta['item_data']
         
-        specs = {}
-        
-        # Techland uses various spec containers - try multiple selectors
-        # Try specification table format
-        spec_rows = response.css('.specification-table tr, .product-specification tr, table.spec-table tr')
-        for row in spec_rows:
-            key = row.css('td:first-child::text, th::text').get()
-            value = row.css('td:last-child::text').get()
-            if key and value:
-                key = self.normalize_text(key).rstrip(':')
-                value = self.normalize_text(value)
-                if key and value:
-                    specs[key] = value
-        
-        # Try key-value list format (common in Techland)
+        # Try JSON-LD first (most reliable), then Livewire data as fallback
+        specs = self._extract_specs_from_json_ld(response)
         if not specs:
-            spec_items = response.css('.product-spec-item, .spec-item, .product-info li')
-            for item in spec_items:
-                key = item.css('.spec-label::text, .spec-key::text, strong::text').get()
-                value = item.css('.spec-value::text, span:last-child::text').get()
-                if key and value:
-                    key = self.normalize_text(key).rstrip(':')
-                    value = self.normalize_text(value)
-                    if key and value:
-                        specs[key] = value
+            specs = self._extract_specs_from_livewire(response)
         
-        # Try description tab content
-        if not specs:
-            desc_specs = response.css('#tab-description li, .product-description li')
-            for item in desc_specs:
-                text = item.css('::text').get()
-                if text and ':' in text:
-                    parts = text.split(':', 1)
-                    if len(parts) == 2:
-                        key = self.normalize_text(parts[0])
-                        value = self.normalize_text(parts[1])
-                        if key and value:
-                            specs[key] = value
+        if specs:
+            logger.info(f"Extracted {len(specs)} specs for: {item_data['name']}")
+        else:
+            logger.warning(f"No specs found for: {item_data['name']} - URL: {response.url}")
         
-        logger.debug(f"Extracted {len(specs)} specs for: {item_data['name']}")
-        
-        # Create and yield the product item with specs
         yield self.create_product_item(
             **item_data,
             specs=specs,
             specs_source_url=response.url,
         )
+    
+    def _extract_specs_from_json_ld(self, response) -> dict:
+        """
+        Extract product specifications from JSON-LD structured data.
+        
+        Techland embeds schema.org Product data with specs in additionalProperty.
+        
+        Args:
+            response: Scrapy response object
+            
+        Returns:
+            Dict of spec name -> value pairs
+        """
+        specs = {}
+        json_ld_scripts = response.css('script[type="application/ld+json"]::text').getall()
+        
+        for script_text in json_ld_scripts:
+            try:
+                data = json.loads(script_text)
+                products = self._find_products_in_json_ld(data)
+                
+                for product in products:
+                    for prop in product.get('additionalProperty', []):
+                        if prop.get('@type') == 'PropertyValue':
+                            name = prop.get('name', '').strip()
+                            value = prop.get('value', '').strip()
+                            if name and value:
+                                specs[name] = self._clean_spec_value(value)
+            except json.JSONDecodeError:
+                continue
+        
+        return specs
+    
+    def _find_products_in_json_ld(self, data) -> list:
+        """Find all Product objects in JSON-LD data (handles arrays and single objects)."""
+        if isinstance(data, list):
+            return [item for item in data if item.get('@type') == 'Product']
+        elif isinstance(data, dict) and data.get('@type') == 'Product':
+            return [data]
+        return []
+    
+    def _extract_specs_from_livewire(self, response) -> dict:
+        """
+        Extract specs from Livewire wire:initial-data attribute (fallback method).
+        
+        Args:
+            response: Scrapy response object
+            
+        Returns:
+            Dict of spec name -> value pairs
+        """
+        specs = {}
+        wire_data = response.css('[wire\\:initial-data]::attr(wire:initial-data)').get()
+        
+        if not wire_data:
+            return specs
+        
+        try:
+            data = json.loads(html.unescape(wire_data))
+            attributes = (
+                data.get('serverMemo', {})
+                .get('data', {})
+                .get('pp_data', {})
+                .get('active_product', {})
+                .get('attributes', [])
+            )
+            
+            # Attributes to skip (already extracted elsewhere)
+            skip_attrs = {'brand', 'model', 'warranty'}
+            
+            for attr in attributes:
+                name = attr.get('name', '').strip()
+                if name.lower() in skip_attrs:
+                    continue
+                
+                # Value can be in pivot.value or direct value
+                pivot = attr.get('pivot', {})
+                value = pivot.get('value', attr.get('value', '')).strip()
+                
+                if name and value:
+                    specs[name] = self._clean_spec_value(value)
+                    
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.debug(f"Failed to parse wire:initial-data: {e}")
+        
+        return specs
+    
+    def _clean_spec_value(self, value: str) -> str:
+        """
+        Clean up a specification value by removing HTML tags and normalizing text.
+        
+        Args:
+            value: Raw spec value potentially containing HTML
+            
+        Returns:
+            Cleaned and normalized value string
+        """
+        value = html.unescape(value)
+        # Replace <br> tags with comma separator
+        value = re.sub(r'&lt;br&gt;|&lt;/br&gt;|<br\s*/?>', ', ', value)
+        # Remove any remaining HTML tags
+        value = re.sub(r'&lt;[^&]*&gt;|<[^>]+>', '', value)
+        return self.normalize_text(value)
     
     def follow_pagination_via_click(self, response):
         """
@@ -334,100 +415,56 @@ class TechlandSpider(BaseRetailerSpider):
         Yields:
             Request for next page (with Playwright page actions)
         """
-        from scrapy_playwright.page import PageMethod
-        from urllib.parse import urlparse, parse_qs
-        
         # Check if there's a next page button
-        next_page_btn = response.css('[aria-label="Go to next page"]')
+        next_page_btn = (
+            response.css('[aria-label="Go to next page"]') or
+            response.css('[wire\\:click="nextPage"]')
+        )
         
         if not next_page_btn:
-            # Use CSS selector instead of XPath to avoid namespace prefix issues
-            # (XPath interprets 'wire:click' as a namespace prefix due to the colon)
-            next_page_btn = response.css('[wire\\:click="nextPage"]')
-        
-        if next_page_btn:
-            # Get current page from URL
-            parsed = urlparse(response.url)
-            query_params = parse_qs(parsed.query)
-            current_page = int(query_params.get('page', [1])[0])
-            next_page = current_page + 1
-            
-            # Check max page limit to prevent excessive Playwright click chains
-            if next_page > self.MAX_PAGES:
-                logger.info(f"Reached max page limit ({self.MAX_PAGES}), stopping pagination")
-                return
-            
-            # Check if next page was already scraped
-            page_id = f"{parsed.path}:{next_page}"
-            if page_id in self.pages_scraped:
-                logger.info(f"Page {next_page} already scraped, stopping")
-                return
-            
-            logger.info(f"Following pagination to page {next_page} via Playwright click")
-            
-            # Build the base URL without query params
-            base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-            
-            # Build a chain of clicks: start from page 1 and click "Next" (next_page - 1) times
-            # This is necessary because each Playwright request starts fresh
-            page_methods = [
-                # Wait for initial page load
-                PageMethod("wait_for_load_state", "networkidle"),
-            ]
-            
-            # Add click actions for each page we need to navigate through
-            for page_num in range(2, next_page + 1):
-                page_methods.extend([
-                    # Click "Next" button
-                    PageMethod("click", '[aria-label="Go to next page"]'),
-                    # Wait for Livewire update
-                    PageMethod("wait_for_timeout", 1500),
-                    PageMethod("wait_for_load_state", "networkidle"),
-                ])
-            
-            yield scrapy.Request(
-                url=base_url,  # Start from base URL (page 1)
-                callback=self.parse,
-                dont_filter=True,
-                meta={
-                    "playwright": True,
-                    "playwright_include_page": False,
-                    "playwright_page_methods": page_methods,
-                },
-            )
-        else:
             logger.info("No more pagination links found - reached last page")
-
-    def follow_pagination(self, response):
-        """
-        [DEPRECATED] Follow pagination using URL parameters.
+            return
         
-        Note: This method is deprecated because Techland's robots.txt blocks ?page= URLs.
-        Use follow_pagination_via_click instead.
-        """
-        from urllib.parse import urlparse, parse_qs, urlencode
+        # Get current page from URL
+        parsed = urlparse(response.url)
+        query_params = parse_qs(parsed.query)
+        current_page = int(query_params.get('page', [1])[0])
+        next_page = current_page + 1
         
-        # Check if there's a next page button using aria-label (more reliable than wire:click)
-        next_page_btn = response.css('[aria-label="Go to next page"]')
+        # Check max page limit to prevent excessive Playwright click chains
+        if next_page > self.MAX_PAGES:
+            logger.info(f"Reached max page limit ({self.MAX_PAGES}), stopping pagination")
+            return
         
-        if not next_page_btn:
-            # Fallback: try XPath for wire:click attribute
-            next_page_btn = response.xpath('//*[@wire:click="nextPage"]')
+        # Check if next page was already scraped
+        page_id = f"{parsed.path}:{next_page}"
+        if page_id in self.pages_scraped:
+            logger.info(f"Page {next_page} already scraped, stopping")
+            return
         
-        if next_page_btn:
-            # Parse current URL to get page number
-            parsed = urlparse(response.url)
-            query_params = parse_qs(parsed.query)
-            current_page = int(query_params.get('page', [1])[0])
-            next_page = current_page + 1
-            
-            # Construct next page URL
-            query_params['page'] = [str(next_page)]
-            # Build new URL
-            new_query = urlencode(query_params, doseq=True)
-            next_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{new_query}"
-            
-            logger.info(f"Following pagination to page {next_page}: {next_url}")
-            yield self.make_request(next_url, callback=self.parse)
-        else:
-            logger.info("No more pagination links found")
+        logger.info(f"Following pagination to page {next_page} via Playwright click")
+        
+        # Build the base URL without query params
+        base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+        
+        # Build a chain of clicks: start from page 1 and click "Next" (next_page - 1) times
+        # This is necessary because each Playwright request starts fresh
+        page_methods = [PageMethod("wait_for_load_state", "networkidle")]
+        
+        for _ in range(next_page - 1):
+            page_methods.extend([
+                PageMethod("click", '[aria-label="Go to next page"]'),
+                PageMethod("wait_for_timeout", 1500),
+                PageMethod("wait_for_load_state", "networkidle"),
+            ])
+        
+        yield scrapy.Request(
+            url=base_url,
+            callback=self.parse,
+            dont_filter=True,
+            meta={
+                "playwright": True,
+                "playwright_include_page": False,
+                "playwright_page_methods": page_methods,
+            },
+        )

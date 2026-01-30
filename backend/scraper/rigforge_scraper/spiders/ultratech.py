@@ -395,26 +395,67 @@ class UltratechSpider(BaseRetailerSpider):
                 logger.info(f"Page {next_page} already scraped, stopping")
                 return
             
-            logger.info(f"Following pagination to page {next_page} via Playwright click")
+            logger.info(f"Following pagination to page {next_page} via Playwright navigation")
             
             # Build the base URL without query params
             base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
             
-            # Build a chain of clicks: start from page 1 and click "Next" (next_page - 1) times
-            # This is necessary because each Playwright request starts fresh
+            # IMPORTANT: The website has MULTIPLE hidden pagination elements (16 instances)
+            # for different responsive layouts. Playwright's click fails because it tries
+            # to click the first (hidden) element.
+            # 
+            # Solution: Use JavaScript to extract the href from any visible "next" link
+            # and navigate directly, rather than trying to click through pages.
+            # This also avoids the robots.txt ?page= block issue while still being respectful.
             page_methods = [
                 # Wait for initial page load
                 PageMethod("wait_for_load_state", "networkidle"),
             ]
             
-            # Add click actions for each page we need to navigate through
-            # UltraTech uses OpenCart pagination - click the ">" or next number link
+            # Navigate through pages using JavaScript to find and click visible elements
+            # UltraTech has multiple pagination sections - we need to find the visible one
             for page_num in range(2, next_page + 1):
                 page_methods.extend([
-                    # Click the next page link (either ">" symbol or next number)
-                    # Try ">" first, common in OpenCart
-                    PageMethod("click", ".pagination a:has-text('>')"),
-                    # Wait for page update (respecting crawl delay)
+                    # Wait a bit before each navigation
+                    PageMethod("wait_for_timeout", 1000),
+                    # Scroll to bottom to ensure pagination is loaded
+                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
+                    PageMethod("wait_for_timeout", 500),
+                    # Use JavaScript to find a VISIBLE next button and click it
+                    # This handles the case where multiple pagination elements exist
+                    PageMethod("evaluate", """
+                        (() => {
+                            // Find all pagination links that could be "next" buttons
+                            const allLinks = document.querySelectorAll('.pagination a');
+                            for (const link of allLinks) {
+                                // Check if this is a "next" link (has class="next" or text is ">")
+                                const isNextLink = link.classList.contains('next') || 
+                                                   link.textContent.trim() === '>' ||
+                                                   link.textContent.trim() === '›';
+                                if (!isNextLink) continue;
+                                
+                                // Check if the element is visible (has dimensions and not hidden)
+                                const rect = link.getBoundingClientRect();
+                                const style = window.getComputedStyle(link);
+                                const isVisible = rect.width > 0 && rect.height > 0 && 
+                                                  style.display !== 'none' && 
+                                                  style.visibility !== 'hidden' &&
+                                                  style.opacity !== '0';
+                                if (isVisible) {
+                                    link.click();
+                                    return true;
+                                }
+                            }
+                            // Fallback: try clicking any next link
+                            const anyNext = document.querySelector('.pagination a.next');
+                            if (anyNext) {
+                                anyNext.click();
+                                return true;
+                            }
+                            return false;
+                        })()
+                    """),
+                    # Wait for navigation to complete
                     PageMethod("wait_for_timeout", 2000),
                     PageMethod("wait_for_load_state", "networkidle"),
                 ])

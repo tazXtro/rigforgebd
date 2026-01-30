@@ -79,17 +79,28 @@ STARTECH_START_URLS = [
 ]
 
 # Category mappings for normalization
+# Note: Order matters! More specific patterns should come before generic ones
 CATEGORY_MAPPINGS = {
     "processor": "Processors",
     "graphics-card": "Graphics Cards",
     "motherboard": "Motherboards",
     "ram": "Memory",
     "ssd-hard-disk": "Storage",
+    "ssd": "Storage",           # For URLs like /ssd
+    "hard-disk": "Storage",     # For URLs like /hard-disk
+    "hdd": "Storage",           # For URLs like /hdd
+    "storage": "Storage",       # Generic storage URLs
     "power-supply": "Power Supply",
+    "psu": "Power Supply",      # Alternative power supply slug
     "casing": "Cases",
+    "case": "Cases",            # Alternative casing slug
     "cpu-cooler": "Cooling",
+    "cooler": "Cooling",        # Generic cooler URLs
+    "cooling": "Cooling",       # Generic cooling URLs
     "monitor": "Monitors",
     "laptop-notebook": "Laptops",
+    "laptop": "Laptops",        # Generic laptop URLs
+    "notebook": "Laptops",      # Alternative laptop slug
 }
 
 # =============================================================================

@@ -45,7 +45,7 @@ class StartechSpider(BaseRetailerSpider):
         "graphics-card": "https://www.startech.com.bd/component/graphics-card",
         "motherboard": "https://www.startech.com.bd/component/motherboard",
         "ram": "https://www.startech.com.bd/component/ram",
-        "storage": "https://www.startech.com.bd/component/ssd-hard-disk",
+        "storage": "https://www.startech.com.bd/ssd",
         "power-supply": "https://www.startech.com.bd/component/power-supply",
         "casing": "https://www.startech.com.bd/component/casing",
         "cooling": "https://www.startech.com.bd/component/CPU-Cooler",
