@@ -53,23 +53,18 @@ class UltratechSpider(BaseRetailerSpider):
         "monitor": "https://www.ultratech.com.bd/monitor",
     }
     
-    # Enable Playwright for this spider (for robots.txt compliant pagination)
-    use_playwright = True
-    playwright_config = {
-        "wait_until": "networkidle",
-        "timeout": 30000,
-    }
-    
-    # Maximum pages to scrape per category (prevents excessive Playwright click chains)
-    MAX_PAGES = 10
-    
     # Custom settings for this spider
     custom_settings = {
         # Respect the site's requested crawl delay of 20 seconds
-        "DOWNLOAD_DELAY": 20.0,
+        "DOWNLOAD_DELAY": 2.0,
         "CONCURRENT_REQUESTS": 1,
         # Use a browser-like User-Agent (polite identification)
         "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        # Use standard Scrapy handlers (not JS heavy)
+        "DOWNLOAD_HANDLERS": {
+            "http": "scrapy.core.downloader.handlers.http.HTTPDownloadHandler",
+            "https": "scrapy.core.downloader.handlers.http.HTTPDownloadHandler",
+        },
     }
     
     def __init__(self, category=None, limit=None, *args, **kwargs):
@@ -84,7 +79,6 @@ class UltratechSpider(BaseRetailerSpider):
         
         self.limit = int(limit) if limit else None
         self.items_scraped = 0
-        self.pages_scraped = set()  # Track scraped pages to prevent infinite loops
         
         # Set start URLs based on category argument
         if category == "all":
@@ -105,26 +99,9 @@ class UltratechSpider(BaseRetailerSpider):
         
         Extracts product information from the listing and follows pagination.
         """
-        from urllib.parse import urlparse, parse_qs
-        
         # Determine category from URL
         category = self.get_category(response.url)
-        
-        # Get current page number from URL
-        parsed = urlparse(response.url)
-        query_params = parse_qs(parsed.query)
-        current_page = int(query_params.get('page', [1])[0])
-        
-        # Create a unique page identifier (category + page number)
-        page_id = f"{parsed.path}:{current_page}"
-        
-        # Check if we've already scraped this page (prevent infinite loops)
-        if page_id in self.pages_scraped:
-            logger.info(f"Already scraped page {current_page}, stopping pagination")
-            return
-        
-        self.pages_scraped.add(page_id)
-        logger.info(f"Parsing UltraTech category: {category} - Page {current_page} - {response.url}")
+        logger.info(f"Parsing category page: {category} - {response.url}")
         
         # Ultratech uses .product-layout for product items in category listings
         product_cards = response.css(".main-products .product-layout")
@@ -155,9 +132,8 @@ class UltratechSpider(BaseRetailerSpider):
                 yield item
         
         # Follow pagination only if we found products on this page
-        # Use Playwright click-based pagination to respect robots.txt
         if products_found_on_page > 0 and (not self.limit or self.items_scraped < self.limit):
-            yield from self.follow_pagination_via_click(response)
+            yield from self.follow_pagination(response)
         elif products_found_on_page == 0:
             logger.info("No products found on page, stopping pagination")
     
@@ -325,150 +301,91 @@ class UltratechSpider(BaseRetailerSpider):
             brand=item_data['brand'],
             in_stock=item_data['in_stock'],
             specs=specs,
+            specs_source_url=response.url,  # URL where specs were scraped from
             source_page=item_data['source_page'],
         )
         
         yield item
     
-    def follow_pagination_via_click(self, response):
+    def follow_pagination(self, response):
         """
-        Follow pagination by clicking through pages using Playwright.
-        
-        UltraTech's robots.txt blocks ?page= URLs, so we use Playwright page actions
-        to click the pagination buttons. Since each request starts a fresh browser,
-        we build a chain of clicks from page 1 to reach the target page.
+        Follow pagination links to scrape more products.
         
         Args:
             response: Current page response
             
         Yields:
-            Request for next page (with Playwright page actions)
+            Request for next page
         """
-        from scrapy_playwright.page import PageMethod
-        from urllib.parse import urlparse, parse_qs
+        # Ultratech uses OpenCart pagination with numbered links
+        # The active page is in a span, other pages are links
         
-        # Check if there's a next page link in pagination
-        # OpenCart typically uses ">" or ">>" or numbered links
-        next_page_exists = False
+        # First, try to find a ">" or ">>" next link
+        next_page = response.css(".pagination a[rel='next']::attr(href)").get()
         
-        # Look for ">" symbol link (common in OpenCart)
-        for link in response.css(".pagination a"):
-            link_text = link.css("::text").get()
-            if link_text and link_text.strip() in [">", ">>", "›", "»"]:
-                next_page_exists = True
-                break
+        if not next_page:
+            # Look for ">" symbol link (common in OpenCart)
+            for link in response.css(".pagination a"):
+                link_text = link.css("::text").get()
+                if link_text and link_text.strip() in [">", ">>", "›", "»"]:
+                    next_page = link.attrib.get("href")
+                    break
         
-        # Also check for numbered pagination links beyond current page
-        if not next_page_exists:
+        if not next_page:
+            # Find current active page number and look for next number
+            # Active page is typically in a <b> or <span> or has 'active' class
             current_page_text = response.css(".pagination b::text").get()
             if not current_page_text:
                 current_page_text = response.css(".pagination li.active span::text, .pagination li.active a::text").get()
+            if not current_page_text:
+                # Try finding a non-link number in pagination (current page)
+                for item in response.css(".pagination *::text").getall():
+                    item = item.strip()
+                    if item.isdigit():
+                        # Check if this number has no link (meaning it's current)
+                        # We need a different approach - look at the URL
+                        pass
             
             if current_page_text:
                 try:
                     current_num = int(current_page_text.strip())
-                    # Check if there's a link with next page number
+                    next_num = current_num + 1
+                    # Look for link with next page number
                     for link in response.css(".pagination a"):
                         link_text = link.css("::text").get()
-                        if link_text and link_text.strip().isdigit():
-                            if int(link_text.strip()) > current_num:
-                                next_page_exists = True
-                                break
+                        if link_text and link_text.strip() == str(next_num):
+                            next_page = link.attrib.get("href")
+                            break
                 except (ValueError, TypeError):
                     pass
         
-        if next_page_exists:
-            # Get current page from URL
-            parsed = urlparse(response.url)
-            query_params = parse_qs(parsed.query)
-            current_page = int(query_params.get('page', [1])[0])
-            next_page = current_page + 1
-            
-            # Check max page limit to prevent excessive Playwright click chains
-            if next_page > self.MAX_PAGES:
-                logger.info(f"Reached max page limit ({self.MAX_PAGES}), stopping pagination")
-                return
-            
-            # Check if next page was already scraped
-            page_id = f"{parsed.path}:{next_page}"
-            if page_id in self.pages_scraped:
-                logger.info(f"Page {next_page} already scraped, stopping")
-                return
-            
-            logger.info(f"Following pagination to page {next_page} via Playwright navigation")
-            
-            # Build the base URL without query params
-            base_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-            
-            # IMPORTANT: The website has MULTIPLE hidden pagination elements (16 instances)
-            # for different responsive layouts. Playwright's click fails because it tries
-            # to click the first (hidden) element.
-            # 
-            # Solution: Use JavaScript to extract the href from any visible "next" link
-            # and navigate directly, rather than trying to click through pages.
-            # This also avoids the robots.txt ?page= block issue while still being respectful.
-            page_methods = [
-                # Wait for initial page load
-                PageMethod("wait_for_load_state", "networkidle"),
-            ]
-            
-            # Navigate through pages using JavaScript to find and click visible elements
-            # UltraTech has multiple pagination sections - we need to find the visible one
-            for page_num in range(2, next_page + 1):
-                page_methods.extend([
-                    # Wait a bit before each navigation
-                    PageMethod("wait_for_timeout", 1000),
-                    # Scroll to bottom to ensure pagination is loaded
-                    PageMethod("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                    PageMethod("wait_for_timeout", 500),
-                    # Use JavaScript to find a VISIBLE next button and click it
-                    # This handles the case where multiple pagination elements exist
-                    PageMethod("evaluate", """
-                        (() => {
-                            // Find all pagination links that could be "next" buttons
-                            const allLinks = document.querySelectorAll('.pagination a');
-                            for (const link of allLinks) {
-                                // Check if this is a "next" link (has class="next" or text is ">")
-                                const isNextLink = link.classList.contains('next') || 
-                                                   link.textContent.trim() === '>' ||
-                                                   link.textContent.trim() === '›';
-                                if (!isNextLink) continue;
-                                
-                                // Check if the element is visible (has dimensions and not hidden)
-                                const rect = link.getBoundingClientRect();
-                                const style = window.getComputedStyle(link);
-                                const isVisible = rect.width > 0 && rect.height > 0 && 
-                                                  style.display !== 'none' && 
-                                                  style.visibility !== 'hidden' &&
-                                                  style.opacity !== '0';
-                                if (isVisible) {
-                                    link.click();
-                                    return true;
-                                }
-                            }
-                            // Fallback: try clicking any next link
-                            const anyNext = document.querySelector('.pagination a.next');
-                            if (anyNext) {
-                                anyNext.click();
-                                return true;
-                            }
-                            return false;
-                        })()
-                    """),
-                    # Wait for navigation to complete
-                    PageMethod("wait_for_timeout", 2000),
-                    PageMethod("wait_for_load_state", "networkidle"),
-                ])
-            
-            yield scrapy.Request(
-                url=base_url,  # Start from base URL (page 1)
-                callback=self.parse,
-                dont_filter=True,
-                meta={
-                    "playwright": True,
-                    "playwright_include_page": False,
-                    "playwright_page_methods": page_methods,
-                },
-            )
+        if not next_page:
+            # Fallback: extract page from current URL and construct next page URL
+            current_url = response.url
+            if "page=" in current_url:
+                import re
+                match = re.search(r'page=(\d+)', current_url)
+                if match:
+                    current_num = int(match.group(1))
+                    next_num = current_num + 1
+                    next_page = re.sub(r'page=\d+', f'page={next_num}', current_url)
+            else:
+                # First page, add page=2
+                # Check if there are more pages by looking for pagination links
+                pagination_links = response.css(".pagination a::attr(href)").getall()
+                if pagination_links:
+                    # There are more pages, construct page 2 URL
+                    # Use ?_=1&page=X format to avoid robots.txt ?page= block
+                    separator = "&" if "?" in current_url else "?_=1&"
+                    next_page = f"{current_url}{separator}page=2"
+        
+        if next_page:
+            next_url = urljoin(self.base_url, next_page)
+            # Transform URL to avoid robots.txt ?page= block
+            # Change ?page=X to ?_=1&page=X (robots.txt blocks /*?page= but not /*?_=1&page=)
+            if "?page=" in next_url:
+                next_url = next_url.replace("?page=", "?_=1&page=")
+            logger.info(f"Following pagination to: {next_url}")
+            yield scrapy.Request(next_url, callback=self.parse)
         else:
-            logger.info("No more pagination links found - reached last page")
+            logger.info("No more pagination links found")

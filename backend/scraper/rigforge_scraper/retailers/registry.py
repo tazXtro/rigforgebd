@@ -56,13 +56,10 @@ RETAILERS: Dict[str, Dict[str, Any]] = {
     },
     "ultratech": {
         "enabled": True,
-        "use_playwright": True,  # For robots.txt compliant pagination
+        "use_playwright": False,
         "spider_class": "rigforge_scraper.spiders.ultratech.UltratechSpider",
         "display_name": "Ultra Technology",
-        "playwright_config": {
-            "wait_until": "networkidle",
-            "timeout": 30000,
-        },
+        "playwright_config": None,
     },
     "potakait": {
         "enabled": True,
