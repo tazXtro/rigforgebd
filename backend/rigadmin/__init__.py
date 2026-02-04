@@ -1,0 +1,1 @@
+# RigAdmin Django App
