@@ -4,10 +4,11 @@ import { useState, useEffect } from "react"
 import { useUser } from "@clerk/nextjs"
 import { motion, AnimatePresence } from "framer-motion"
 import { Send, Loader2, User, Trash2, MessageSquareOff } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { BuildComment } from "./types"
-import { getComments, addComment, deleteComment } from "@/lib/buildsApi"
+import { getComments, addComment, deleteComment, SanctionError } from "@/lib/buildsApi"
 import { cn } from "@/lib/utils"
 
 interface CommentSectionProps {
@@ -64,7 +65,17 @@ export function CommentSection({ buildId, commentsEnabled, authorId }: CommentSe
             setComments((prev) => [...prev, comment])
             setNewComment("")
         } catch (error) {
-            console.error("Failed to add comment:", error)
+            if (error instanceof SanctionError) {
+                toast.error(error.message, { duration: 5000 })
+                if (error.reason) {
+                    setTimeout(() => {
+                        toast.warning(`Reason: ${error.reason}`, { duration: 6000 })
+                    }, 800)
+                }
+            } else {
+                const message = error instanceof Error ? error.message : "Failed to add comment"
+                toast.error(message)
+            }
         } finally {
             setIsSubmitting(false)
         }

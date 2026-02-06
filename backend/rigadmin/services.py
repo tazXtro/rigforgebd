@@ -264,6 +264,268 @@ class InviteService:
             return []
 
 
+class BuildModerationService:
+    """
+    Service layer for build approval workflow.
+    
+    Handles pending build review, approval, and rejection.
+    """
+    
+    def __init__(self, moderation_repo=None, admin_repo=None, user_repo=None):
+        from rigadmin.repositories.moderation import build_moderation_repository
+        self.moderation_repo = moderation_repo or build_moderation_repository
+        self.admin_repo = admin_repo or admin_repository
+        self.user_repo = user_repo or user_repository
+    
+    def get_pending_builds(
+        self,
+        page: int = 1,
+        page_size: int = 12,
+    ) -> Tuple[List[dict], int]:
+        """
+        Get builds pending approval.
+        
+        Returns:
+            Tuple of (list of pending builds, total count)
+        """
+        try:
+            return self.moderation_repo.get_pending_builds(page, page_size)
+        except RepositoryError as e:
+            logger.error(f"Error fetching pending builds: {e}")
+            return [], 0
+    
+    def get_pending_count(self) -> int:
+        """Get count of pending builds for dashboard badge."""
+        try:
+            return self.moderation_repo.get_pending_count()
+        except RepositoryError as e:
+            logger.error(f"Error fetching pending count: {e}")
+            return 0
+    
+    def approve_build(
+        self,
+        build_id: str,
+        admin_email: str,
+    ) -> Tuple[Optional[dict], Optional[str]]:
+        """
+        Approve a build for public display.
+        
+        Args:
+            build_id: The build's UUID
+            admin_email: Email of the approving admin
+            
+        Returns:
+            Tuple of (updated build, error message)
+        """
+        try:
+            # Verify admin status
+            admin = self.admin_repo.get_by_email(admin_email)
+            if not admin:
+                return None, "Not authorized"
+            
+            # Get admin's user ID
+            user = self.user_repo.get_by_email(admin_email)
+            if not user:
+                return None, "Admin user not found"
+            
+            result = self.moderation_repo.update_approval_status(
+                build_id=build_id,
+                status="approved",
+                reviewed_by=user["id"],
+            )
+            return result, None
+        except RepositoryError as e:
+            logger.error(f"Error approving build: {e}")
+            return None, "Failed to approve build"
+    
+    def reject_build(
+        self,
+        build_id: str,
+        admin_email: str,
+        reason: Optional[str] = None,
+    ) -> Tuple[Optional[dict], Optional[str]]:
+        """
+        Reject a build.
+        
+        Args:
+            build_id: The build's UUID
+            admin_email: Email of the rejecting admin
+            reason: Optional rejection reason
+            
+        Returns:
+            Tuple of (updated build, error message)
+        """
+        try:
+            # Verify admin status
+            admin = self.admin_repo.get_by_email(admin_email)
+            if not admin:
+                return None, "Not authorized"
+            
+            # Get admin's user ID
+            user = self.user_repo.get_by_email(admin_email)
+            if not user:
+                return None, "Admin user not found"
+            
+            result = self.moderation_repo.update_approval_status(
+                build_id=build_id,
+                status="rejected",
+                reviewed_by=user["id"],
+                rejection_reason=reason,
+            )
+            return result, None
+        except RepositoryError as e:
+            logger.error(f"Error rejecting build: {e}")
+            return None, "Failed to reject build"
+
+
+class UserModerationService:
+    """
+    Service layer for user moderation.
+    
+    Handles user sanctions (bans/timeouts) and comment moderation.
+    """
+    
+    def __init__(self, sanction_repo=None, comments_repo=None, admin_repo=None, user_repo=None):
+        from rigadmin.repositories.moderation import sanction_repository, comments_repository
+        self.sanction_repo = sanction_repo or sanction_repository
+        self.comments_repo = comments_repo or comments_repository
+        self.admin_repo = admin_repo or admin_repository
+        self.user_repo = user_repo or user_repository
+    
+    def get_all_comments(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+        search: Optional[str] = None,
+    ) -> Tuple[List[dict], int]:
+        """
+        Get all comments for moderation.
+        
+        Returns:
+            Tuple of (list of comments, total count)
+        """
+        try:
+            return self.comments_repo.get_all_comments(page, page_size, search)
+        except RepositoryError as e:
+            logger.error(f"Error fetching comments: {e}")
+            return [], 0
+    
+    def get_active_sanctions(
+        self,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> Tuple[List[dict], int]:
+        """
+        Get active sanctions.
+        
+        Returns:
+            Tuple of (list of sanctions, total count)
+        """
+        try:
+            return self.sanction_repo.get_active_sanctions(page, page_size)
+        except RepositoryError as e:
+            logger.error(f"Error fetching sanctions: {e}")
+            return [], 0
+    
+    def sanction_user(
+        self,
+        user_id: str,
+        admin_email: str,
+        sanction_type: str,
+        reason: Optional[str] = None,
+        duration_days: Optional[int] = None,
+    ) -> Tuple[Optional[dict], Optional[str]]:
+        """
+        Create a sanction for a user.
+        
+        Args:
+            user_id: The user to sanction
+            admin_email: Email of the admin creating the sanction
+            sanction_type: 'timeout' or 'permanent_ban'
+            reason: Reason for the sanction
+            duration_days: Days for timeout
+            
+        Returns:
+            Tuple of (sanction data, error message)
+        """
+        try:
+            # Verify admin status
+            admin = self.admin_repo.get_by_email(admin_email)
+            if not admin:
+                return None, "Not authorized"
+            
+            # Get admin's user ID
+            admin_user = self.user_repo.get_by_email(admin_email)
+            if not admin_user:
+                return None, "Admin user not found"
+            
+            # Check if user already has active sanction
+            existing = self.sanction_repo.get_user_active_sanction(user_id)
+            if existing:
+                return None, "User already has an active sanction"
+            
+            result = self.sanction_repo.create(
+                user_id=user_id,
+                sanction_type=sanction_type,
+                created_by=admin_user["id"],
+                reason=reason,
+                duration_days=duration_days,
+            )
+            return result, None
+        except RepositoryError as e:
+            logger.error(f"Error creating sanction: {e}")
+            return None, "Failed to create sanction"
+    
+    def remove_sanction(
+        self,
+        sanction_id: str,
+        admin_email: str,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Remove (deactivate) a sanction.
+        
+        Args:
+            sanction_id: The sanction's UUID
+            admin_email: Email of the admin removing the sanction
+            
+        Returns:
+            Tuple of (success, error message)
+        """
+        try:
+            # Verify admin status
+            admin = self.admin_repo.get_by_email(admin_email)
+            if not admin:
+                return False, "Not authorized"
+            
+            self.sanction_repo.deactivate(sanction_id)
+            return True, None
+        except RepositoryError as e:
+            logger.error(f"Error removing sanction: {e}")
+            return False, "Failed to remove sanction"
+    
+    def is_user_sanctioned(self, user_id: str) -> Tuple[bool, Optional[dict]]:
+        """
+        Check if a user is currently sanctioned.
+        
+        Args:
+            user_id: The user's UUID
+            
+        Returns:
+            Tuple of (is_sanctioned, sanction_details)
+        """
+        try:
+            sanction = self.sanction_repo.get_user_active_sanction(user_id)
+            if sanction:
+                return True, sanction
+            return False, None
+        except RepositoryError as e:
+            logger.error(f"Error checking user sanction: {e}")
+            return False, None
+
+
 # Singleton instances
 admin_service = AdminService()
 invite_service = InviteService()
+build_moderation_service = BuildModerationService()
+user_moderation_service = UserModerationService()
+

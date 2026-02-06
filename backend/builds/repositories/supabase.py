@@ -82,6 +82,7 @@ class BuildsRepository:
         featured_only: bool = False,
         search: Optional[str] = None,
         author_id: Optional[str] = None,
+        approval_status: Optional[str] = None,
     ) -> tuple[List[dict], int]:
         """
         Retrieve all builds with pagination, filtering, and sorting.
@@ -93,6 +94,7 @@ class BuildsRepository:
             featured_only: If True, only return featured builds
             search: Optional search term for title/description
             author_id: Optional filter by author
+            approval_status: Optional filter by approval status (pending/approved/rejected)
             
         Returns:
             Tuple of (list of builds, total count)
@@ -113,6 +115,9 @@ class BuildsRepository:
             
             if author_id:
                 query = query.eq("author_id", author_id)
+            
+            if approval_status:
+                query = query.eq("approval_status", approval_status)
             
             if search:
                 # Search in title and description

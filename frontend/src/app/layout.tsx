@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/theme-provider";
 import { UserSyncProvider } from "@/components/providers/UserSyncProvider";
 import { BuilderProvider } from "@/components/builder";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -45,6 +46,7 @@ export default function RootLayout({
             <UserSyncProvider>
               <BuilderProvider>
                 {children}
+                <Toaster richColors position="bottom-right" />
               </BuilderProvider>
             </UserSyncProvider>
           </ThemeProvider>

@@ -131,6 +131,15 @@ export async function deleteBuild(id: string, userEmail: string): Promise<void> 
 
 // ==================== Voting ====================
 
+export class SanctionError extends Error {
+    reason?: string
+    constructor(message: string, reason?: string) {
+        super(message)
+        this.name = "SanctionError"
+        this.reason = reason
+    }
+}
+
 /**
  * Vote on a build (upvote or downvote)
  */
@@ -145,7 +154,11 @@ export async function voteBuild(
         body: JSON.stringify({ userEmail, voteType }),
     })
     if (!response.ok) {
-        throw new Error("Failed to vote on build")
+        const data = await response.json().catch(() => null)
+        if (response.status === 403 && data?.error) {
+            throw new SanctionError(data.error, data.reason)
+        }
+        throw new Error(data?.error || "Failed to vote on build")
     }
     return response.json()
 }
@@ -208,7 +221,11 @@ export async function addComment(
         body: JSON.stringify({ authorEmail, content }),
     })
     if (!response.ok) {
-        throw new Error("Failed to add comment")
+        const data = await response.json().catch(() => null)
+        if (response.status === 403 && data?.error) {
+            throw new SanctionError(data.error, data.reason)
+        }
+        throw new Error(data?.error || "Failed to add comment")
     }
     return response.json()
 }

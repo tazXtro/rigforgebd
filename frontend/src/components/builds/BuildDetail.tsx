@@ -29,7 +29,8 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Build, ComponentCategory } from "./types"
 import { CommentSection } from "./CommentSection"
-import { voteBuild } from "@/lib/buildsApi"
+import { voteBuild, SanctionError } from "@/lib/buildsApi"
+import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 interface BuildDetailProps {
@@ -69,7 +70,17 @@ export function BuildDetail({ build: initialBuild, onBuildUpdate }: BuildDetailP
             setBuild(updatedBuild)
             onBuildUpdate?.(updatedBuild)
         } catch (error) {
-            console.error("Failed to vote:", error)
+            if (error instanceof SanctionError) {
+                toast.error(error.message, { duration: 5000 })
+                if (error.reason) {
+                    setTimeout(() => {
+                        toast.warning(`Reason: ${error.reason}`, { duration: 6000 })
+                    }, 800)
+                }
+            } else {
+                const message = error instanceof Error ? error.message : "Failed to vote"
+                toast.error(message)
+            }
         } finally {
             setIsVoting(false)
         }

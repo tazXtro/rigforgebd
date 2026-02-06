@@ -28,6 +28,43 @@ from builds.serializers import (
     UploadBuildImageSerializer,
 )
 
+from datetime import datetime, timezone
+
+
+def _build_sanction_message(result: dict, action: str) -> str:
+    """Build a user-facing sanction error message with remaining time if applicable."""
+    sanction_type = result.get("sanction_type")
+    expires_at = result.get("expires_at")
+
+    if sanction_type == "permanent_ban":
+        return f"Your account has been permanently banned. You cannot {action}."
+
+    if expires_at:
+        try:
+            if isinstance(expires_at, str):
+                expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            else:
+                expiry = expires_at
+            remaining = expiry - datetime.now(timezone.utc)
+            total_seconds = int(remaining.total_seconds())
+            if total_seconds > 0:
+                days, remainder = divmod(total_seconds, 86400)
+                hours, remainder = divmod(remainder, 3600)
+                minutes, _ = divmod(remainder, 60)
+                parts = []
+                if days:
+                    parts.append(f"{days}d")
+                if hours:
+                    parts.append(f"{hours}h")
+                if minutes or not parts:
+                    parts.append(f"{minutes}m")
+                time_str = " ".join(parts)
+                return f"Your account is currently sanctioned. You cannot {action}. Time remaining: {time_str}."
+        except (ValueError, TypeError):
+            pass
+
+    return f"Your account is currently sanctioned. You cannot {action} during this period."
+
 
 class BuildsListView(APIView):
     """
@@ -292,6 +329,15 @@ class BuildVoteView(APIView):
             vote_type=serializer.validated_data["voteType"],
         )
         
+        if isinstance(build, dict) and build.get("sanctioned"):
+            response_data = {"error": _build_sanction_message(build, "vote")}
+            if build.get("reason"):
+                response_data["reason"] = build["reason"]
+            return Response(
+                response_data,
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         if not build:
             return Response(
                 {"error": "Failed to vote on build"},
@@ -377,6 +423,15 @@ class BuildCommentsView(APIView):
             author_email=serializer.validated_data["authorEmail"],
             content=serializer.validated_data["content"],
         )
+        
+        if isinstance(comment, dict) and comment.get("sanctioned"):
+            response_data = {"error": _build_sanction_message(comment, "comment")}
+            if comment.get("reason"):
+                response_data["reason"] = comment["reason"]
+            return Response(
+                response_data,
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         if not comment:
             return Response(

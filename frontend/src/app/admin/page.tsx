@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import {
     CheckCircle2,
     Shield,
@@ -12,6 +13,7 @@ import {
     Settings,
     X,
 } from "lucide-react";
+import { getPendingBuildsCount } from "@/lib/moderationApi";
 
 interface AdminCard {
     id: string;
@@ -21,6 +23,7 @@ interface AdminCard {
     href: string;
     gradient: string;
     glowColor: string;
+    badge?: number; // Optional badge count
 }
 
 const adminCards: AdminCard[] = [
@@ -72,10 +75,36 @@ const adminCards: AdminCard[] = [
 ];
 
 export default function AdminPage() {
+    const { user, isSignedIn } = useUser();
     const [isOpen, setIsOpen] = useState(false);
     const [activeIndex, setActiveIndex] = useState(-1);
     const [radius, setRadius] = useState(280);
+    const [pendingBuildsCount, setPendingBuildsCount] = useState(0);
     const router = useRouter();
+
+    const userEmail = user?.primaryEmailAddress?.emailAddress || "";
+
+    // Fetch pending builds count with polling
+    useEffect(() => {
+        if (!userEmail) return;
+
+        const fetchCount = async () => {
+            try {
+                const count = await getPendingBuildsCount(userEmail);
+                setPendingBuildsCount(count);
+            } catch (error) {
+                console.error("Failed to fetch pending count:", error);
+            }
+        };
+
+        // Initial fetch
+        fetchCount();
+
+        // Poll every 30 seconds
+        const interval = setInterval(fetchCount, 30000);
+
+        return () => clearInterval(interval);
+    }, [userEmail]);
 
     // Responsive radius based on viewport
     useEffect(() => {
@@ -300,6 +329,22 @@ export default function AdminPage() {
                                                     <p className="text-xs text-muted-foreground leading-snug">
                                                         {card.description}
                                                     </p>
+
+                                                    {/* Pending Badge for Builds */}
+                                                    {card.id === "builds" && pendingBuildsCount > 0 && (
+                                                        <motion.div
+                                                            initial={{ scale: 0 }}
+                                                            animate={{ scale: 1 }}
+                                                            className="absolute -top-2 -right-2 bg-yellow-500 text-yellow-950 text-xs font-bold rounded-full min-w-[24px] h-6 flex items-center justify-center px-2 shadow-lg"
+                                                        >
+                                                            <motion.span
+                                                                animate={{ scale: [1, 1.1, 1] }}
+                                                                transition={{ repeat: Infinity, duration: 2 }}
+                                                            >
+                                                                {pendingBuildsCount}
+                                                            </motion.span>
+                                                        </motion.div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </motion.button>

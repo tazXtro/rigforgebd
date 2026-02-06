@@ -90,6 +90,8 @@ class BuildsService:
             "downvotes": build.get("downvotes_count", 0),
             "commentCount": build.get("comments_count", 0),
             "userVote": None,
+            "approvalStatus": build.get("approval_status", "approved"),
+            "rejectionReason": build.get("rejection_reason"),
         }
         
         # Get user's vote status if user_id provided
@@ -128,6 +130,7 @@ class BuildsService:
         featured_only: bool = False,
         search: Optional[str] = None,
         user_id: Optional[str] = None,
+        approval_status: Optional[str] = "approved",  # Default to approved for public
     ) -> dict:
         """
         Get paginated list of builds.
@@ -150,6 +153,7 @@ class BuildsService:
                 sort_by=sort_by,
                 featured_only=featured_only,
                 search=search,
+                approval_status=approval_status,
             )
             
             formatted_builds = [self._format_build(b, user_id) for b in builds]
@@ -252,6 +256,7 @@ class BuildsService:
                 "total_price": total_price,
                 "author_id": author["id"],
                 "comments_enabled": comments_enabled,
+                "approval_status": "pending",  # New builds require approval
             }
             
             # Create the build
@@ -396,6 +401,17 @@ class BuildsService:
                 logger.error(f"User not found for email: {user_email}")
                 return None
             
+            # Check if user is sanctioned
+            sanctioned, sanction = self._is_user_sanctioned(user["id"])
+            if sanctioned:
+                logger.warning(f"Sanctioned user {user_email} attempted to vote")
+                return {
+                    "sanctioned": True,
+                    "sanction_type": sanction.get("sanction_type") if sanction else None,
+                    "expires_at": sanction.get("expires_at") if sanction else None,
+                    "reason": sanction.get("reason") if sanction else None,
+                }
+            
             # Verify build exists
             build = self.builds_repo.get_by_id(build_id)
             if not build:
@@ -403,7 +419,7 @@ class BuildsService:
                 return None
             
             # Create or update vote
-            self.votes_repo.create_or_update_vote(build_id, user["id"], vote_type)
+            self.votes_repo.create_or_update_vote(str(build_id), str(user["id"]), vote_type)
             
             # Return updated build
             updated_build = self.builds_repo.get_by_id(build_id)
@@ -517,10 +533,21 @@ class BuildsService:
                 logger.error(f"Author not found for email: {author_email}")
                 return None
             
+            # Check if user is sanctioned
+            sanctioned, sanction = self._is_user_sanctioned(author["id"])
+            if sanctioned:
+                logger.warning(f"Sanctioned user {author_email} attempted to comment")
+                return {
+                    "sanctioned": True,
+                    "sanction_type": sanction.get("sanction_type") if sanction else None,
+                    "expires_at": sanction.get("expires_at") if sanction else None,
+                    "reason": sanction.get("reason") if sanction else None,
+                }
+            
             # Create comment
             comment_data = {
-                "build_id": build_id,
-                "author_id": author["id"],
+                "build_id": str(build_id),
+                "author_id": str(author["id"]),
                 "content": content,
             }
             
@@ -528,7 +555,7 @@ class BuildsService:
             
             # Format with author info
             created_comment["users"] = {
-                "id": author["id"],
+                "id": str(author["id"]),
                 "username": author.get("username") or author.get("display_name") or "Anonymous",
                 "display_name": author.get("display_name"),
                 "avatar_url": author.get("avatar_url"),
@@ -579,7 +606,7 @@ class BuildsService:
             
             # Add author info for formatting
             updated["users"] = {
-                "id": author["id"],
+                "id": str(author["id"]),
                 "username": author.get("username") or author.get("display_name") or "Anonymous",
                 "display_name": author.get("display_name"),
                 "avatar_url": author.get("avatar_url"),
@@ -621,6 +648,24 @@ class BuildsService:
         except RepositoryError as e:
             logger.error(f"Failed to delete comment {comment_id}: {e}")
             return False
+
+
+    def _is_user_sanctioned(self, user_id: str) -> tuple:
+        """
+        Check if a user is currently sanctioned.
+        
+        Args:
+            user_id: The user's UUID
+            
+        Returns:
+            Tuple of (is_sanctioned, sanction_details)
+        """
+        try:
+            from rigadmin.services import user_moderation_service
+            return user_moderation_service.is_user_sanctioned(user_id)
+        except Exception as e:
+            logger.error(f"Error checking user sanction: {e}")
+            return False, None  # Allow action if check fails
 
 
 # Singleton instance
