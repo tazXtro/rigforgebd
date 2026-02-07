@@ -11,9 +11,7 @@ Follows clean architecture principles:
 """
 
 import logging
-import time
-from functools import wraps
-from typing import Optional, List, Callable, TypeVar
+from typing import Optional, List
 from datetime import datetime, timezone
 
 from products.repositories.exceptions import (
@@ -27,62 +25,6 @@ from products.repositories.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar('T')
-
-
-def retry_on_socket_error(
-    max_retries: int = 3,
-    base_delay: float = 0.1,
-    max_delay: float = 2.0,
-) -> Callable:
-    """
-    Decorator to retry operations on transient socket errors.
-    
-    Handles WinError 10035 and similar non-blocking socket errors
-    that occur under high load with rapid requests.
-    
-    Args:
-        max_retries: Maximum number of retry attempts
-        base_delay: Initial delay in seconds (doubles each retry)
-        max_delay: Maximum delay cap in seconds
-    """
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
-        @wraps(func)
-        def wrapper(*args, **kwargs) -> T:
-            last_exception = None
-            delay = base_delay
-            
-            for attempt in range(max_retries + 1):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    error_str = str(e)
-                    # Check for transient socket errors (Windows non-blocking socket)
-                    is_transient = (
-                        "10035" in error_str or  # WSAEWOULDBLOCK
-                        "10053" in error_str or  # WSAECONNABORTED
-                        "10054" in error_str or  # WSAECONNRESET
-                        "timed out" in error_str.lower() or
-                        "connection" in error_str.lower() and "reset" in error_str.lower()
-                    )
-                    
-                    if is_transient and attempt < max_retries:
-                        logger.warning(
-                            f"Transient error in {func.__name__} (attempt {attempt + 1}/{max_retries + 1}): {e}. "
-                            f"Retrying in {delay:.2f}s..."
-                        )
-                        time.sleep(delay)
-                        delay = min(delay * 2, max_delay)
-                        last_exception = e
-                    else:
-                        raise
-            
-            # Should not reach here, but just in case
-            if last_exception:
-                raise last_exception
-        return wrapper
-    return decorator
 
 
 class SimpleCache:
@@ -266,7 +208,6 @@ class ProductRepository:
                 original_error=e
             ) from e
     
-    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_paginated(
         self,
         page: int = 1,
@@ -376,7 +317,6 @@ class ProductRepository:
                 original_error=e
             ) from e
     
-    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_category_counts(self, use_cache: bool = True, cache_ttl: float = 30.0) -> dict:
         """
         Get count of product listings per category.
@@ -462,7 +402,6 @@ class ProductRepository:
         """Invalidate the category counts cache (call after product changes)."""
         _cache.clear("category_counts")
     
-    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_available_brands(self, category_slug: Optional[str] = None) -> List[str]:
         """
         Get list of unique brands, optionally filtered by category.
@@ -672,7 +611,6 @@ class RetailerRepository:
                 original_error=e
             ) from e
     
-    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_all_with_counts(self, active_only: bool = True) -> List[dict]:
         """
         Retrieve all retailers with their product listing counts.
@@ -784,7 +722,6 @@ class PriceRepository:
                 original_error=e
             ) from e
     
-    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_by_product_ids(self, product_ids: List[str]) -> List[dict]:
         """
         Retrieve all price records for multiple products.
@@ -907,7 +844,6 @@ class PriceRepository:
                 original_error=e
             ) from e
 
-    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def get_listings_paginated(
         self,
         page: int = 1,
@@ -1049,7 +985,6 @@ class PriceRepository:
                 original_error=e
             ) from e
 
-    @retry_on_socket_error(max_retries=3, base_delay=0.1)
     def mark_stale_as_out_of_stock(
         self,
         retailer_id: str,
