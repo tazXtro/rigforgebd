@@ -22,6 +22,7 @@ class RetailerSerializer(serializers.Serializer):
 class ProductPriceSerializer(serializers.Serializer):
     """Serializer for product price from a retailer."""
     
+    priceId = serializers.CharField(required=False, allow_blank=True, help_text="Price record UUID")
     name = serializers.CharField(help_text="Retailer name")
     slug = serializers.CharField(required=False, help_text="Retailer slug")
     price = serializers.FloatField(help_text="Price in BDT")

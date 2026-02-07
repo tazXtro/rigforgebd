@@ -251,6 +251,60 @@ class BuildsRepository:
                 original_error=e
             ) from e
     
+    def get_by_product_name(
+        self,
+        product_name: str,
+        limit: int = 6,
+        approval_status: str = "approved",
+    ) -> List[dict]:
+        """
+        Retrieve builds that contain a specific product in their components.
+        
+        Uses JSONB containment operator (@>) to match product name
+        within the components array.
+        
+        Args:
+            product_name: Exact product name to search for
+            limit: Maximum number of builds to return
+            approval_status: Filter by approval status
+            
+        Returns:
+            List of builds containing the product
+            
+        Raises:
+            RepositoryError: On database query failure
+        """
+        try:
+            import json
+            # Use JSONB containment: components @> '[{"product": {"name": "..."}}]'
+            filter_value = json.dumps([{"product": {"name": product_name}}])
+            
+            query = (
+                self.client
+                .table(self.TABLE_NAME)
+                .select("*, users!builds_author_id_fkey(id, email, username, display_name, avatar_url)")
+                .filter("components", "cs", filter_value)
+            )
+            
+            if approval_status:
+                query = query.eq("approval_status", approval_status)
+            
+            response = (
+                query
+                .order("upvotes_count", desc=True)
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            
+            return response.data or []
+        except Exception as e:
+            logger.error(f"Failed to fetch builds by product name '{product_name}': {e}")
+            raise RepositoryError(
+                f"Failed to fetch builds by product name: {product_name}",
+                original_error=e
+            ) from e
+
     def delete(self, build_id: str) -> bool:
         """
         Delete a build.

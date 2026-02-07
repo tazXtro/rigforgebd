@@ -848,6 +848,7 @@ class ProductService:
             for price in prices:
                 retailer_info = price.get('retailers', {})
                 retailers.append({
+                    'priceId': price.get('id', ''),
                     'name': retailer_info.get('name', 'Unknown'),
                     'slug': retailer_info.get('slug', ''),
                     'price': float(price.get('price', 0)),

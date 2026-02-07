@@ -64,6 +64,27 @@ export async function getFeaturedBuilds(limit = 6, userEmail?: string): Promise<
 }
 
 /**
+ * Get builds that contain a specific product/component
+ */
+export async function getBuildsByProduct(
+    productName: string,
+    limit = 6,
+    userEmail?: string
+): Promise<Build[]> {
+    const params = new URLSearchParams({
+        productName,
+        limit: limit.toString(),
+    })
+    if (userEmail) params.append("userEmail", userEmail)
+
+    const response = await fetch(`${API_BASE}/by-product/?${params.toString()}`)
+    if (!response.ok) {
+        throw new Error("Failed to fetch builds by product")
+    }
+    return response.json()
+}
+
+/**
  * Create a new build
  * @param data - Build form data
  * @param author - Author information including email for lookup

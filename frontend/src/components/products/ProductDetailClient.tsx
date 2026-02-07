@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import {
     ArrowLeft,
@@ -15,10 +16,24 @@ import {
     Check,
     AlertCircle,
     Info,
-    TrendingDown
+    TrendingDown,
+    Shield,
+    Trash2,
+    Plus,
+    Loader2,
 } from "lucide-react"
 import { Product } from "./ProductCard"
+import { ProductBuilds } from "./ProductBuilds"
+import { EditableField } from "./EditableField"
+import { EditableSpecs } from "./EditableSpecs"
 import { cn } from "@/lib/utils"
+import { useIsAdmin } from "@/hooks/useIsAdmin"
+import {
+    adminUpdateProduct,
+    adminUpdateSpecs,
+    adminUpdatePrice,
+    adminDeleteProduct,
+} from "@/lib/adminProductApi"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,10 +49,16 @@ interface ProductDetailClientProps {
     product: Product
 }
 
-export function ProductDetailClient({ product }: ProductDetailClientProps) {
+export function ProductDetailClient({ product: initialProduct }: ProductDetailClientProps) {
+    const [product, setProduct] = useState(initialProduct)
     const [isFavorite, setIsFavorite] = useState(false)
     const [shareStatus, setShareStatus] = useState<'idle' | 'success' | 'error'>('idle')
     const [specsOpen, setSpecsOpen] = useState(true)
+    const [isDeleting, setIsDeleting] = useState(false)
+    const router = useRouter()
+
+    // Admin check
+    const { isAdmin, adminEmail } = useIsAdmin()
 
     // Format price with Taka symbol
     const formatPrice = (price: number) => `৳${price.toLocaleString("en-BD")}`
@@ -73,11 +94,73 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
         }
     }
 
+    // ========== Admin Edit Handlers ==========
+    const handleUpdateField = useCallback(
+        async (field: string, newValue: string): Promise<{ error?: string }> => {
+            const result = await adminUpdateProduct(product.id, {
+                admin_email: adminEmail,
+                [field]: newValue,
+            })
+            if (result.error) return { error: result.error }
+            if (result.product) {
+                setProduct((prev) => ({
+                    ...prev,
+                    name: result.product!.name ?? prev.name,
+                    brand: result.product!.brand ?? prev.brand,
+                    category: result.product!.category ?? prev.category,
+                    image: result.product!.image_url ?? prev.image,
+                }))
+            }
+            return {}
+        },
+        [product.id, adminEmail]
+    )
+
+    const handleUpdateSpecs = useCallback(
+        async (newSpecs: Record<string, string>): Promise<{ error?: string }> => {
+            const result = await adminUpdateSpecs(product.id, {
+                admin_email: adminEmail,
+                specs: newSpecs,
+            })
+            if (result.error) return { error: result.error }
+            setProduct((prev) => ({ ...prev, specs: result.specs || newSpecs }))
+            return {}
+        },
+        [product.id, adminEmail]
+    )
+
+    const handleUpdatePrice = useCallback(
+        async (priceId: string, field: string, newValue: string): Promise<{ error?: string }> => {
+            const payload: Record<string, unknown> = { admin_email: adminEmail }
+            if (field === "price") payload.price = parseFloat(newValue)
+            else payload[field] = newValue
+
+            // We need the price_id — however the current Product type doesn't carry it.
+            // We use the retailer index to construct a PATCH. For now, use product-level price endpoint.
+            const result = await adminUpdatePrice(product.id, priceId, payload as any)
+            if (result.error) return { error: result.error }
+            return {}
+        },
+        [product.id, adminEmail]
+    )
+
+    const handleDelete = useCallback(async () => {
+        if (!confirm("Are you sure you want to delete this product? This cannot be undone.")) return
+        setIsDeleting(true)
+        const result = await adminDeleteProduct(product.id, adminEmail)
+        setIsDeleting(false)
+        if (result.error) {
+            alert(result.error)
+            return
+        }
+        router.push(`/products/${product.categorySlug}`)
+    }, [product.id, product.categorySlug, adminEmail, router])
+
     return (
         <div className="min-h-screen bg-muted/10 pb-12">
             {/* Header / Breadcrumb */}
             <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b">
-                <div className="container max-w-7xl mx-auto px-4 py-3">
+                <div className="container max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
                     <Link
                         href={`/products/${product.categorySlug}`}
                         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -85,6 +168,29 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                         <ArrowLeft className="w-4 h-4" />
                         Back to {product.category}
                     </Link>
+
+                    {isAdmin && (
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="bg-violet-500/10 text-violet-500 border-violet-500/30 gap-1">
+                                <Shield className="w-3 h-3" />
+                                Admin Edit Mode
+                            </Badge>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 gap-1"
+                                onClick={handleDelete}
+                                disabled={isDeleting}
+                            >
+                                {isDeleting ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                )}
+                                Delete
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -106,6 +212,22 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                         </Badge>
                                     )}
                                 </div>
+                                {isAdmin && (
+                                    <div className="p-3 border-t bg-muted/30">
+                                        <EditableField
+                                            value={product.image || ""}
+                                            editable={true}
+                                            label="Image URL"
+                                            inputType="url"
+                                            onSave={(v) => handleUpdateField("image_url", v)}
+                                            renderDisplay={(v) => (
+                                                <span className="text-xs text-muted-foreground truncate max-w-full block">
+                                                    {v ? "Image URL set" : "No image URL"}
+                                                </span>
+                                            )}
+                                        />
+                                    </div>
+                                )}
                             </Card>
 
                             <div className="grid grid-cols-2 gap-3">
@@ -148,10 +270,27 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                         {/* Title & Price Header */}
                         <div className="space-y-4">
                             <div>
-                                <h2 className="text-sm font-medium text-primary mb-1 tracking-wide uppercase">{product.brand}</h2>
-                                <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
-                                    {product.name}
-                                </h1>
+                                <EditableField
+                                    value={product.brand || ""}
+                                    editable={isAdmin}
+                                    label="Brand"
+                                    onSave={(v) => handleUpdateField("brand", v)}
+                                    renderDisplay={(v) => (
+                                        <h2 className="text-sm font-medium text-primary mb-1 tracking-wide uppercase">{v}</h2>
+                                    )}
+                                    className="mb-1"
+                                />
+                                <EditableField
+                                    value={product.name}
+                                    editable={isAdmin}
+                                    label="Product Name"
+                                    onSave={(v) => handleUpdateField("name", v)}
+                                    renderDisplay={(v) => (
+                                        <h1 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
+                                            {v}
+                                        </h1>
+                                    )}
+                                />
                             </div>
 
                             <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background">
@@ -198,54 +337,26 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                             <CardContent className="p-0">
                                 <div className="divide-y">
                                     {sortedRetailers.map((retailer, idx) => (
-                                        <div
-                                            key={idx}
-                                            className={cn(
-                                                "p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/30 transition-colors",
-                                                idx === 0 && "bg-primary/5"
-                                            )}
-                                        >
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="font-semibold text-base truncate">{retailer.name}</span>
-                                                    {idx === 0 && (
-                                                        <Badge variant="secondary" className="text-[10px] px-1.5 h-5 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20">
-                                                            Best Price
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-3 text-sm">
-                                                    <span className={cn(
-                                                        "flex items-center gap-1.5 font-medium",
-                                                        retailer.inStock ? "text-green-600 dark:text-green-500" : "text-red-500"
-                                                    )}>
-                                                        {retailer.inStock ? <Package className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
-                                                        {retailer.inStock ? "In Stock" : "Out of Stock"}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
-                                                <div className="text-right">
-                                                    <div className="font-bold text-lg">{formatPrice(retailer.price)}</div>
-                                                    {idx > 0 && retailer.price > lowestPrice && (
-                                                        <div className="text-xs text-muted-foreground">
-                                                            +{formatPrice(retailer.price - lowestPrice)}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <Button
-                                                    asChild
-                                                    size="sm"
-                                                    variant={retailer.inStock ? "default" : "secondary"}
-                                                    className={cn("w-28", !retailer.inStock && "opacity-70")}
-                                                >
-                                                    <a href={retailer.url} target="_blank" rel="noopener noreferrer">
-                                                        {retailer.inStock ? "Buy Now" : "Check"} <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
-                                                    </a>
-                                                </Button>
-                                            </div>
-                                        </div>
+                                        <RetailerRow
+                                            key={retailer.priceId || idx}
+                                            retailer={retailer}
+                                            idx={idx}
+                                            lowestPrice={lowestPrice}
+                                            formatPrice={formatPrice}
+                                            isAdmin={isAdmin}
+                                            productId={product.id}
+                                            adminEmail={adminEmail}
+                                            onPriceUpdated={(priceId, newPrice, newInStock) => {
+                                                setProduct((prev) => ({
+                                                    ...prev,
+                                                    retailers: prev.retailers.map((r) =>
+                                                        r.priceId === priceId
+                                                            ? { ...r, price: newPrice ?? r.price, inStock: newInStock ?? r.inStock }
+                                                            : r
+                                                    ),
+                                                }))
+                                            }}
+                                        />
                                     ))}
                                 </div>
                             </CardContent>
@@ -276,34 +387,194 @@ export function ProductDetailClient({ product }: ProductDetailClientProps) {
                                             transition={{ duration: 0.2 }}
                                         >
                                             <CardContent className="p-0">
-                                                <div className="grid grid-cols-1 divide-y">
-                                                    {Object.entries(product.specs).map(([key, value], i) => (
-                                                        <div key={key} className="grid grid-cols-3 p-4 gap-4 hover:bg-muted/20">
-                                                            <div className="col-span-1 text-sm font-medium text-muted-foreground">
-                                                                {key}
-                                                            </div>
-                                                            <div className="col-span-2 text-sm font-medium text-foreground">
-                                                                {value}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
+                                                <EditableSpecs
+                                                    specs={product.specs}
+                                                    onSave={handleUpdateSpecs}
+                                                    editable={isAdmin}
+                                                />
                                             </CardContent>
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
                             </Card>
                         ) : (
-                            <Card className="bg-muted/30 border-dashed">
-                                <CardContent className="h-32 flex flex-col items-center justify-center text-muted-foreground">
-                                    <Info className="w-8 h-8 mb-2 opacity-20" />
-                                    <p>Specifications not available</p>
-                                </CardContent>
+                            <Card className={cn("overflow-hidden", isAdmin ? "border-dashed border-primary/30" : "bg-muted/30 border-dashed")}>
+                                {isAdmin ? (
+                                    <>
+                                        <div className="p-4 flex items-center justify-between border-b">
+                                            <div className="flex items-center gap-2 font-semibold text-lg">
+                                                <Info className="w-5 h-5 text-muted-foreground" />
+                                                Technical Specifications
+                                            </div>
+                                        </div>
+                                        <CardContent className="p-0">
+                                            <EditableSpecs
+                                                specs={{}}
+                                                onSave={handleUpdateSpecs}
+                                                editable={true}
+                                            />
+                                        </CardContent>
+                                    </>
+                                ) : (
+                                    <CardContent className="h-32 flex flex-col items-center justify-center text-muted-foreground">
+                                        <Info className="w-8 h-8 mb-2 opacity-20" />
+                                        <p>Specifications not available</p>
+                                    </CardContent>
+                                )}
                             </Card>
                         )}
+
+                        {/* Builds Using This Product */}
+                        <ProductBuilds productName={product.name} />
                     </div>
                 </div>
             </main>
+        </div>
+    )
+}
+/* ================================================================
+   RetailerRow — renders a single retailer with optional admin editing
+   ================================================================ */
+
+import { ProductRetailer } from "./ProductCard"
+
+interface RetailerRowProps {
+    retailer: ProductRetailer
+    idx: number
+    lowestPrice: number
+    formatPrice: (n: number) => string
+    isAdmin: boolean
+    productId: string
+    adminEmail: string
+    onPriceUpdated: (priceId: string, newPrice?: number, newInStock?: boolean) => void
+}
+
+function RetailerRow({
+    retailer,
+    idx,
+    lowestPrice,
+    formatPrice,
+    isAdmin,
+    productId,
+    adminEmail,
+    onPriceUpdated,
+}: RetailerRowProps) {
+    const [isTogglingStock, setIsTogglingStock] = useState(false)
+
+    const handleToggleStock = async () => {
+        if (!retailer.priceId) return
+        setIsTogglingStock(true)
+        const newInStock = !retailer.inStock
+        const result = await adminUpdatePrice(productId, retailer.priceId, {
+            admin_email: adminEmail,
+            in_stock: newInStock,
+        })
+        setIsTogglingStock(false)
+        if (!result.error) {
+            onPriceUpdated(retailer.priceId, undefined, newInStock)
+        }
+    }
+
+    return (
+        <div
+            className={cn(
+                "p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/30 transition-colors",
+                idx === 0 && "bg-primary/5"
+            )}
+        >
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-base truncate">{retailer.name}</span>
+                    {idx === 0 && (
+                        <Badge variant="secondary" className="text-[10px] px-1.5 h-5 bg-primary/10 text-primary hover:bg-primary/20 border-primary/20">
+                            Best Price
+                        </Badge>
+                    )}
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                    {isAdmin && retailer.priceId ? (
+                        <button
+                            onClick={handleToggleStock}
+                            disabled={isTogglingStock}
+                            className={cn(
+                                "flex items-center gap-1.5 font-medium cursor-pointer hover:opacity-80 transition-opacity",
+                                retailer.inStock ? "text-green-600 dark:text-green-500" : "text-red-500"
+                            )}
+                            title="Click to toggle stock status"
+                        >
+                            {isTogglingStock ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : retailer.inStock ? (
+                                <Package className="w-3.5 h-3.5" />
+                            ) : (
+                                <AlertCircle className="w-3.5 h-3.5" />
+                            )}
+                            {retailer.inStock ? "In Stock" : "Out of Stock"}
+                        </button>
+                    ) : (
+                        <span className={cn(
+                            "flex items-center gap-1.5 font-medium",
+                            retailer.inStock ? "text-green-600 dark:text-green-500" : "text-red-500"
+                        )}>
+                            {retailer.inStock ? <Package className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                            {retailer.inStock ? "In Stock" : "Out of Stock"}
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
+                <div className="text-right">
+                    {isAdmin && retailer.priceId ? (
+                        <EditableField
+                            value={String(retailer.price)}
+                            editable={true}
+                            label="Price"
+                            inputType="number"
+                            onSave={async (newValue) => {
+                                const parsed = parseFloat(newValue)
+                                if (isNaN(parsed) || parsed < 0) return { error: "Invalid price" }
+                                const result = await adminUpdatePrice(productId, retailer.priceId!, {
+                                    admin_email: adminEmail,
+                                    price: parsed,
+                                })
+                                if (result.error) return { error: result.error }
+                                onPriceUpdated(retailer.priceId!, parsed, undefined)
+                                return {}
+                            }}
+                            renderDisplay={(v) => (
+                                <div>
+                                    <div className="font-bold text-lg">{formatPrice(Number(v))}</div>
+                                    {idx > 0 && Number(v) > lowestPrice && (
+                                        <div className="text-xs text-muted-foreground">
+                                            +{formatPrice(Number(v) - lowestPrice)}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        />
+                    ) : (
+                        <>
+                            <div className="font-bold text-lg">{formatPrice(retailer.price)}</div>
+                            {idx > 0 && retailer.price > lowestPrice && (
+                                <div className="text-xs text-muted-foreground">
+                                    +{formatPrice(retailer.price - lowestPrice)}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+                <Button
+                    asChild
+                    size="sm"
+                    variant={retailer.inStock ? "default" : "secondary"}
+                    className={cn("w-28", !retailer.inStock && "opacity-70")}
+                >
+                    <a href={retailer.url} target="_blank" rel="noopener noreferrer">
+                        {retailer.inStock ? "Buy Now" : "Check"} <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+                    </a>
+                </Button>
+            </div>
         </div>
     )
 }

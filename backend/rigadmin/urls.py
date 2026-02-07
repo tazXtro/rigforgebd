@@ -18,6 +18,13 @@ from rigadmin.views import (
     SanctionDetailView,
     CheckUserSanctionView,
 )
+from rigadmin.product_views import (
+    AdminProductCreateView,
+    AdminProductUpdateView,
+    AdminProductSpecsView,
+    AdminProductPriceListCreateView,
+    AdminProductPriceUpdateView,
+)
 
 app_name = "rigadmin"
 
@@ -42,5 +49,12 @@ urlpatterns = [
     path("sanctions/", SanctionsView.as_view(), name="sanctions"),
     path("sanctions/<str:sanction_id>/", SanctionDetailView.as_view(), name="sanction-detail"),
     path("sanctions/check/<str:user_id>/", CheckUserSanctionView.as_view(), name="check-user-sanction"),
+    
+    # Admin product management
+    path("products/", AdminProductCreateView.as_view(), name="admin-product-create"),
+    path("products/<str:product_id>/", AdminProductUpdateView.as_view(), name="admin-product-update"),
+    path("products/<str:product_id>/specs/", AdminProductSpecsView.as_view(), name="admin-product-specs"),
+    path("products/<str:product_id>/prices/", AdminProductPriceListCreateView.as_view(), name="admin-product-prices"),
+    path("products/<str:product_id>/prices/<str:price_id>/", AdminProductPriceUpdateView.as_view(), name="admin-product-price-update"),
 ]
 

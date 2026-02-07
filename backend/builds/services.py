@@ -193,6 +193,33 @@ class BuildsService:
             logger.error(f"Failed to get build {build_id}: {e}")
             return None
     
+    def get_builds_by_product(
+        self,
+        product_name: str,
+        limit: int = 6,
+        user_id: Optional[str] = None,
+    ) -> List[dict]:
+        """
+        Get builds that use a specific product/component.
+        
+        Args:
+            product_name: Exact product name to search for
+            limit: Maximum number of builds to return
+            user_id: Optional current user ID for vote status
+            
+        Returns:
+            List of formatted builds containing the product
+        """
+        try:
+            builds = self.builds_repo.get_by_product_name(
+                product_name=product_name,
+                limit=limit,
+            )
+            return [self._format_build(b, user_id) for b in builds]
+        except RepositoryError as e:
+            logger.error(f"Failed to get builds by product '{product_name}': {e}")
+            return []
+    
     def get_featured_builds(self, limit: int = 6, user_id: Optional[str] = None) -> List[dict]:
         """
         Get featured builds.

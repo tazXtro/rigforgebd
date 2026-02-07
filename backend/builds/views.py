@@ -168,6 +168,49 @@ class BuildsListView(APIView):
         return Response(build, status=status.HTTP_201_CREATED)
 
 
+class BuildsByProductView(APIView):
+    """
+    Get builds that contain a specific product/component.
+    
+    GET /api/builds/by-product/?productName=...
+    """
+    
+    def get(self, request):
+        """
+        Get builds containing a specific product.
+        
+        Query params:
+            - productName (str): The exact product name to search for
+            - limit (int): Maximum number of builds, default 6
+            - userEmail (str): Optional user email for vote status
+        """
+        product_name = request.query_params.get("productName")
+        
+        if not product_name:
+            return Response(
+                {"error": "productName query parameter is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        limit = int(request.query_params.get("limit", 6))
+        user_email = request.query_params.get("userEmail")
+        
+        # Get user_id from email if provided
+        user_id = None
+        if user_email:
+            from users.repositories.supabase import user_repository
+            user = user_repository.get_by_email(user_email)
+            user_id = user["id"] if user else None
+        
+        builds = builds_service.get_builds_by_product(
+            product_name=product_name,
+            limit=limit,
+            user_id=user_id,
+        )
+        
+        return Response(builds, status=status.HTTP_200_OK)
+
+
 class BuildDetailView(APIView):
     """
     Retrieve, update, or delete a single build.

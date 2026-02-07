@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { AddToBuildButton } from "./AddToBuildButton"
 
 export interface ProductRetailer {
+    priceId?: string
     name: string
     price: number
     inStock: boolean
