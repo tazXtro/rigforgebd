@@ -36,8 +36,12 @@ class AdminProductCreateView(APIView):
             )
             return Response({"error": error}, status=http_status)
 
+        added_to_existing = product.pop("_added_to_existing", False)
         output = AdminProductOutputSerializer(product)
-        return Response(output.data, status=status.HTTP_201_CREATED)
+        response_data = output.data
+        if added_to_existing:
+            response_data["added_to_existing"] = True
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class AdminProductUpdateView(APIView):

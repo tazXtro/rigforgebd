@@ -25,6 +25,11 @@ from rigadmin.product_views import (
     AdminProductPriceListCreateView,
     AdminProductPriceUpdateView,
 )
+from rigadmin.compat_views import (
+    MissingCompatCountView,
+    MissingCompatListView,
+    CompatUpdateView,
+)
 
 app_name = "rigadmin"
 
@@ -56,5 +61,10 @@ urlpatterns = [
     path("products/<str:product_id>/specs/", AdminProductSpecsView.as_view(), name="admin-product-specs"),
     path("products/<str:product_id>/prices/", AdminProductPriceListCreateView.as_view(), name="admin-product-prices"),
     path("products/<str:product_id>/prices/<str:price_id>/", AdminProductPriceUpdateView.as_view(), name="admin-product-price-update"),
+    
+    # Compatibility management
+    path("compat/missing/count/", MissingCompatCountView.as_view(), name="compat-missing-count"),
+    path("compat/missing/", MissingCompatListView.as_view(), name="compat-missing-list"),
+    path("compat/<str:product_id>/", CompatUpdateView.as_view(), name="compat-update"),
 ]
 

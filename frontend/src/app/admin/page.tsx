@@ -8,12 +8,13 @@ import {
     CheckCircle2,
     Shield,
     Cpu,
-    Store,
+    Link2,
     UserPlus,
     Settings,
     X,
 } from "lucide-react";
 import { getPendingBuildsCount } from "@/lib/moderationApi";
+import { getMissingCompatCounts } from "@/lib/adminCompatApi";
 
 interface AdminCard {
     id: string;
@@ -55,11 +56,11 @@ const adminCards: AdminCard[] = [
         glowColor: "rgba(139, 92, 246, 0.5)",
     },
     {
-        id: "retailers",
-        title: "Manage Retailers",
-        description: "Configure retailers",
-        icon: <Store className="h-6 w-6" />,
-        href: "/admin/retailers",
+        id: "compatibility",
+        title: "Compatibility",
+        description: "Fix missing compat data",
+        icon: <Link2 className="h-6 w-6" />,
+        href: "/admin/compatibility",
         gradient: "from-amber-500 to-orange-600",
         glowColor: "rgba(245, 158, 11, 0.5)",
     },
@@ -80,6 +81,7 @@ export default function AdminPage() {
     const [activeIndex, setActiveIndex] = useState(-1);
     const [radius, setRadius] = useState(280);
     const [pendingBuildsCount, setPendingBuildsCount] = useState(0);
+    const [missingCompatCount, setMissingCompatCount] = useState(0);
     const router = useRouter();
 
     const userEmail = user?.primaryEmailAddress?.emailAddress || "";
@@ -103,6 +105,24 @@ export default function AdminPage() {
         // Poll every 30 seconds
         const interval = setInterval(fetchCount, 30000);
 
+        return () => clearInterval(interval);
+    }, [userEmail]);
+
+    // Fetch missing compat count with polling
+    useEffect(() => {
+        if (!userEmail) return;
+
+        const fetchCompatCount = async () => {
+            try {
+                const { counts } = await getMissingCompatCounts(userEmail);
+                if (counts) setMissingCompatCount(counts.total);
+            } catch (error) {
+                console.error("Failed to fetch compat count:", error);
+            }
+        };
+
+        fetchCompatCount();
+        const interval = setInterval(fetchCompatCount, 30000);
         return () => clearInterval(interval);
     }, [userEmail]);
 
@@ -329,6 +349,22 @@ export default function AdminPage() {
                                                     <p className="text-xs text-muted-foreground leading-snug">
                                                         {card.description}
                                                     </p>
+
+                                                    {/* Missing Compat Badge */}
+                                                    {card.id === "compatibility" && missingCompatCount > 0 && (
+                                                        <motion.div
+                                                            initial={{ scale: 0 }}
+                                                            animate={{ scale: 1 }}
+                                                            className="absolute -top-2 -right-2 bg-orange-500 text-orange-950 text-xs font-bold rounded-full min-w-[24px] h-6 flex items-center justify-center px-2 shadow-lg"
+                                                        >
+                                                            <motion.span
+                                                                animate={{ scale: [1, 1.1, 1] }}
+                                                                transition={{ repeat: Infinity, duration: 2 }}
+                                                            >
+                                                                {missingCompatCount}
+                                                            </motion.span>
+                                                        </motion.div>
+                                                    )}
 
                                                     {/* Pending Badge for Builds */}
                                                     {card.id === "builds" && pendingBuildsCount > 0 && (

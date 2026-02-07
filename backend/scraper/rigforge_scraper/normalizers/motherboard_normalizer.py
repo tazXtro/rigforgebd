@@ -25,7 +25,10 @@ from .patterns.motherboard_patterns import (
     DDR3_PATTERN,
     SPEED_PATTERN,
     DDR5_MIN_SPEED,
+    DDR4_MIN_SPEED,
     DDR4_MAX_SPEED,
+    DDR3_MIN_SPEED,
+    DDR3_MAX_SPEED,
     # Spec keys
     SOCKET_SPEC_KEYS,
     CHIPSET_SPEC_KEYS,
@@ -59,7 +62,7 @@ class MotherboardNormalizer(BaseNormalizer):
         - mobo_socket: AM4, AM5, LGA1700, etc.
         - mobo_chipset: B550, X670, Z790, etc.
         - mobo_form_factor: ATX, Micro-ATX, Mini-ITX, etc.
-        - memory_type: DDR4, DDR5 (with dual-DDR support)
+        - memory_type: DDR3, DDR4, DDR5 (with dual-DDR support)
         - memory_slots: Number of DIMM slots
         - memory_max_speed_mhz: Maximum supported memory speed
         - memory_max_capacity_gb: Maximum supported memory capacity
@@ -129,7 +132,7 @@ class MotherboardNormalizer(BaseNormalizer):
             attributes['memory_type'] = memory_type
             self._log_extraction('memory_type', memory_type, mem_src, 0.85)
         else:
-            warnings.append("Could not determine memory type (DDR4/DDR5)")
+            warnings.append("Could not determine memory type (DDR3/DDR4/DDR5)")
         
         # 5. Extract memory slots
         mem_slots = self._extract_memory_slots(specs)
@@ -257,11 +260,11 @@ class MotherboardNormalizer(BaseNormalizer):
         chipset: Optional[str],
     ) -> Tuple[Optional[str], str]:
         """
-        Extract DDR type (DDR4 or DDR5) with dual-DDR chipset awareness.
+        Extract DDR type (DDR3, DDR4, or DDR5) with dual-DDR chipset awareness.
         
-        For dual-DDR chipsets (Z690, B650, etc.), tries to determine
+        For dual-DDR chipsets (Z690, B650, H110, etc.), tries to determine
         the specific variant from title/specs. Falls back to DDR5
-        for newer chipsets if ambiguous.
+        for newer dual-DDR chipsets, DDR4 for older ones.
         
         Returns:
             Tuple of (memory_type, source)
@@ -278,21 +281,27 @@ class MotherboardNormalizer(BaseNormalizer):
         # Check for explicit DDR type in specs
         has_ddr5_specs = bool(DDR5_PATTERN.search(specs_text) or DDR5_PATTERN.search(all_specs_text))
         has_ddr4_specs = bool(DDR4_PATTERN.search(specs_text) or DDR4_PATTERN.search(all_specs_text))
+        has_ddr3_specs = bool(DDR3_PATTERN.search(specs_text) or DDR3_PATTERN.search(all_specs_text))
         
-        # Unambiguous from specs
-        if has_ddr5_specs and not has_ddr4_specs:
+        # Unambiguous from specs (only one DDR generation mentioned)
+        if has_ddr5_specs and not has_ddr4_specs and not has_ddr3_specs:
             return ('DDR5', 'specs')
-        if has_ddr4_specs and not has_ddr5_specs:
+        if has_ddr4_specs and not has_ddr5_specs and not has_ddr3_specs:
             return ('DDR4', 'specs')
+        if has_ddr3_specs and not has_ddr4_specs and not has_ddr5_specs:
+            return ('DDR3', 'specs')
         
         # Check title
         has_ddr5_title = bool(DDR5_PATTERN.search(title))
         has_ddr4_title = bool(DDR4_PATTERN.search(title))
+        has_ddr3_title = bool(DDR3_PATTERN.search(title))
         
-        if has_ddr5_title and not has_ddr4_title:
+        if has_ddr5_title and not has_ddr4_title and not has_ddr3_title:
             return ('DDR5', 'title')
-        if has_ddr4_title and not has_ddr5_title:
+        if has_ddr4_title and not has_ddr5_title and not has_ddr3_title:
             return ('DDR4', 'title')
+        if has_ddr3_title and not has_ddr4_title and not has_ddr5_title:
+            return ('DDR3', 'title')
         
         # Speed-based inference
         combined_text = f"{title} {all_specs_text}"
@@ -301,8 +310,10 @@ class MotherboardNormalizer(BaseNormalizer):
             max_speed = max(int(s) for s in speed_matches)
             if max_speed >= DDR5_MIN_SPEED:
                 return ('DDR5', 'inferred_speed')
-            if max_speed < DDR4_MAX_SPEED:
+            if max_speed >= DDR4_MIN_SPEED:
                 return ('DDR4', 'inferred_speed')
+            if max_speed >= DDR3_MIN_SPEED:
+                return ('DDR3', 'inferred_speed')
         
         # Infer from chipset
         if chipset:
@@ -314,9 +325,15 @@ class MotherboardNormalizer(BaseNormalizer):
                     # Single DDR type supported
                     return (ddr_list[0], 'inferred')
                 else:
-                    # Dual-DDR chipset - default to DDR5 for newer platforms
-                    # This is a reasonable default as DDR5 variants are more common
-                    return ('DDR5', 'inferred_dual')
+                    # Dual-DDR chipset - determine default based on which generations
+                    if 'DDR5' in ddr_list and 'DDR4' in ddr_list:
+                        # Newer dual-DDR (Z690, B650, etc.) - default to DDR5
+                        return ('DDR5', 'inferred_dual')
+                    if 'DDR4' in ddr_list and 'DDR3' in ddr_list:
+                        # Older dual-DDR (H110, Z170, etc.) - default to DDR4
+                        return ('DDR4', 'inferred_dual')
+                    # Fallback: return the newest supported type
+                    return (ddr_list[-1], 'inferred_dual')
         
         return (None, 'none')
     

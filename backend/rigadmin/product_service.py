@@ -97,11 +97,50 @@ class AdminProductService:
                 "image_url": data.get("image_url") or None,
             }
 
-            # Check slug uniqueness
+            # Check if a product with the same slug already exists
             existing = self.product_repo.get_by_slug(product_data["slug"])
-            if existing:
-                return None, f"A product with a similar name already exists (slug: {product_data['slug']})"
 
+            if existing:
+                # Product exists — check if THIS retailer already has a price entry
+                existing_prices = self.price_repo.get_by_product_id(existing["id"])
+                retailer_id_str = str(data["retailer_id"])
+                already_has_retailer = any(
+                    p.get("retailer_id") == retailer_id_str for p in existing_prices
+                )
+
+                if already_has_retailer:
+                    return None, (
+                        f"This product already exists with a price from the same retailer "
+                        f"(slug: {product_data['slug']})"
+                    )
+
+                # Add a new retailer price to the existing product
+                price_data = {
+                    "product_id": existing["id"],
+                    "retailer_id": retailer_id_str,
+                    "price": float(data["price"]),
+                    "currency": "BDT",
+                    "product_url": data["product_url"],
+                    "in_stock": data.get("in_stock", True),
+                }
+                self.price_repo.create(price_data)
+
+                # Update specs if provided (merge with existing)
+                specs = data.get("specs")
+                if specs and isinstance(specs, dict) and len(specs) > 0:
+                    self.specs_repo.upsert(
+                        product_id=existing["id"],
+                        specs=specs,
+                    )
+
+                logger.info(
+                    f"Admin added retailer price to existing product: "
+                    f"{existing['name']} (id={existing['id']}, retailer={retailer['name']})"
+                )
+                existing["_added_to_existing"] = True
+                return existing, None
+
+            # Brand-new product — create it
             product = self.product_repo.create(product_data)
 
             # Create initial price entry

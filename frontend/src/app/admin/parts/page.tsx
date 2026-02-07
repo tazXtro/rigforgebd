@@ -76,6 +76,7 @@ export default function AdminAddProductPage() {
     const [status, setStatus] = useState<"idle" | "success" | "error">("idle")
     const [errorMessage, setErrorMessage] = useState("")
     const [createdProductSlug, setCreatedProductSlug] = useState("")
+    const [addedToExisting, setAddedToExisting] = useState(false)
 
     // Fetch retailers on mount
     useEffect(() => {
@@ -138,6 +139,7 @@ export default function AdminAddProductPage() {
         setStatus("success")
         if (product) {
             setCreatedProductSlug(product.slug)
+            setAddedToExisting(product.added_to_existing ?? false)
         }
     }
 
@@ -155,6 +157,7 @@ export default function AdminAddProductPage() {
         setStatus("idle")
         setErrorMessage("")
         setCreatedProductSlug("")
+        setAddedToExisting(false)
     }
 
     return (
@@ -190,10 +193,14 @@ export default function AdminAddProductPage() {
                                 </div>
                                 <div className="flex-1">
                                     <h3 className="font-semibold text-green-700 dark:text-green-400">
-                                        Product Created Successfully!
+                                        {addedToExisting
+                                            ? "Retailer Price Added Successfully!"
+                                            : "Product Created Successfully!"}
                                     </h3>
                                     <p className="text-sm text-muted-foreground mt-1">
-                                        The product has been added to the catalog.
+                                        {addedToExisting
+                                            ? "A new retailer price has been added to the existing product."
+                                            : "The product has been added to the catalog."}
                                     </p>
                                 </div>
                                 <div className="flex gap-2">

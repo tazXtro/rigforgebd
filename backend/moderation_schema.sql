@@ -116,13 +116,9 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ----------------------------------------
--- 6. VIEW FOR PENDING BUILDS COUNT (for admin dashboard)
+-- 6. PENDING BUILDS COUNT
 -- ----------------------------------------
-CREATE OR REPLACE VIEW pending_builds_count AS
-SELECT COUNT(*) as count
-FROM builds
-WHERE approval_status = 'pending';
-
--- Grant access to the view
-GRANT SELECT ON pending_builds_count TO authenticated;
-GRANT SELECT ON pending_builds_count TO service_role;
+-- NOTE: No database view needed. The pending count is queried directly
+-- from the builds table via the API service layer using:
+--   SELECT id FROM builds WHERE approval_status = 'pending' (with count="exact")
+-- This is the same pattern used by the compatibility missing count.

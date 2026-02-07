@@ -65,6 +65,14 @@ CHIPSET_TO_SOCKET: Dict[str, str] = {
     "B860": "LGA1851",
     "H810": "LGA1851",
     
+    # Intel LGA1150 (4th/5th Gen Haswell/Broadwell)
+    "H81": "LGA1150",
+    "B85": "LGA1150",
+    "H87": "LGA1150",
+    "Z87": "LGA1150",
+    "H97": "LGA1150",
+    "Z97": "LGA1150",
+    
     # Intel LGA1151 (6th-9th Gen)
     "H110": "LGA1151",
     "B150": "LGA1151",
@@ -143,6 +151,14 @@ CHIPSET_TO_DDR: Dict[str, List[str]] = {
     "H570": ["DDR4"],
     "Z590": ["DDR4"],
     
+    # Intel LGA1150 - DDR3 only
+    "H81": ["DDR3"],
+    "B85": ["DDR3"],
+    "H87": ["DDR3"],
+    "Z87": ["DDR3"],
+    "H97": ["DDR3"],
+    "Z97": ["DDR3"],
+    
     # Intel LGA1151 - DDR4 (some early boards DDR3)
     "H110": ["DDR4", "DDR3"],
     "B150": ["DDR4", "DDR3"],
@@ -193,6 +209,7 @@ SOCKET_PATTERNS: List[Tuple[Pattern[str], str]] = [
     (re.compile(r'\bLGA[\s-]?1200\b', re.I), "LGA1200"),
     (re.compile(r'\bLGA[\s-]?1151\b', re.I), "LGA1151"),
     (re.compile(r'\bLGA[\s-]?1150\b', re.I), "LGA1150"),
+    (re.compile(r'\bSocket\s*1150\b', re.I), "LGA1150"),
     (re.compile(r'\bLGA[\s-]?2066\b', re.I), "LGA2066"),
     (re.compile(r'\bLGA[\s-]?4677\b', re.I), "LGA4677"),
     (re.compile(r'\bLGA[\s-]?3647\b', re.I), "LGA3647"),
@@ -245,6 +262,7 @@ FORM_FACTOR_SPEC_KEYS: FrozenSet[str] = frozenset([
 ])
 
 MEMORY_TYPE_SPEC_KEYS: FrozenSet[str] = frozenset([
+    "type",
     "memory_type",
     "ram_type",
     "memory",
@@ -294,10 +312,11 @@ DDR4_PATTERN: Pattern[str] = re.compile(r'\bDDR4\b', re.I)
 DDR3_PATTERN: Pattern[str] = re.compile(r'\bDDR3\b', re.I)
 
 # Speed-based DDR inference thresholds
-DDR5_MIN_SPEED = 4000  # DDR5 starts at 4800, but some marketing says "4000+"
-DDR4_MIN_SPEED = 2133
+DDR5_MIN_SPEED = 4800  # DDR5 starts at 4800 MT/s
+DDR4_MIN_SPEED = 2133  # DDR4 starts at 2133 MT/s
 DDR4_MAX_SPEED = 4000  # Anything above likely DDR5
-DDR3_MAX_SPEED = 2133
+DDR3_MIN_SPEED = 800   # DDR3 starts at 800 MHz
+DDR3_MAX_SPEED = 2133  # DDR3 tops out around 2133 (OC)
 
 SPEED_PATTERN: Pattern[str] = re.compile(r'(\d{4,5})\s*(?:MHz|MT/s)', re.I)
 
@@ -354,7 +373,7 @@ MAX_MEMORY_SLOTS = 8
 # MEMORY SPEED VALIDATION
 # =============================================================================
 
-MIN_MEMORY_SPEED_MHZ = 1600
+MIN_MEMORY_SPEED_MHZ = 800   # DDR3 can go as low as 800 MHz
 MAX_MEMORY_SPEED_MHZ = 10000
 
 
