@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { useUser } from "@clerk/nextjs"
+import { useAuth } from "@clerk/nextjs"
 import { motion } from "framer-motion"
 import {
     ArrowLeft,
@@ -31,7 +31,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 
 import { fetchRetailers, Retailer } from "@/lib/productsApi"
-import { adminCreateProduct } from "@/lib/adminProductApi"
+import { createProductApi } from "@/lib/adminProductApi"
 
 // Product categories matching the system
 const CATEGORIES = [
@@ -55,9 +55,14 @@ interface SpecEntry {
 }
 
 export default function AdminAddProductPage() {
-    const { user } = useUser()
+    const { getToken, isLoaded: isAuthLoaded } = useAuth()
     const router = useRouter()
-    const adminEmail = user?.primaryEmailAddress?.emailAddress || ""
+
+    // Create JWT-authenticated product API
+    const productApi = useMemo(() => {
+        if (!getToken) return null
+        return createProductApi(getToken)
+    }, [getToken])
 
     // Form state
     const [name, setName] = useState("")
@@ -104,19 +109,18 @@ export default function AdminAddProductPage() {
     }
 
     // Form validation
-    const isValid = name.trim() && category && retailerId && price && productUrl.trim()
+    const isValid = name.trim() && category && retailerId && price && productUrl.trim() && productApi
 
     // Submit handler
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
-        if (!isValid || !adminEmail) return
+        if (!isValid) return
 
         setIsLoading(true)
         setStatus("idle")
         setErrorMessage("")
 
-        const { product, error } = await adminCreateProduct({
-            admin_email: adminEmail,
+        const { product, error } = await productApi.createProduct({
             name: name.trim(),
             category,
             brand: brand.trim() || undefined,
@@ -390,14 +394,12 @@ export default function AdminAddProductPage() {
                                 <button
                                     type="button"
                                     onClick={() => setInStock(!inStock)}
-                                    className={`relative w-11 h-6 rounded-full transition-colors ${
-                                        inStock ? "bg-green-500" : "bg-muted-foreground/30"
-                                    }`}
+                                    className={`relative w-11 h-6 rounded-full transition-colors ${inStock ? "bg-green-500" : "bg-muted-foreground/30"
+                                        }`}
                                 >
                                     <span
-                                        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
-                                            inStock ? "translate-x-5" : "translate-x-0"
-                                        }`}
+                                        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${inStock ? "translate-x-5" : "translate-x-0"
+                                            }`}
                                     />
                                 </button>
                                 <Label className="cursor-pointer" onClick={() => setInStock(!inStock)}>

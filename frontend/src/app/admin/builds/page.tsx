@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useUser, SignIn } from "@clerk/nextjs";
+import { useUser, useAuth, SignIn } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -43,15 +43,14 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
 import {
-    getPendingBuilds,
-    approveBuild,
-    rejectBuild,
+    createModerationApi,
     PendingBuild,
     BuildComponent,
 } from "@/lib/moderationApi";
 
 export default function BuildsApprovalPage() {
     const { user, isLoaded, isSignedIn } = useUser();
+    const { getToken, isLoaded: isAuthLoaded } = useAuth();
     const [builds, setBuilds] = useState<PendingBuild[]>([]);
     const [total, setTotal] = useState(0);
     const [page, setPage] = useState(1);
@@ -64,14 +63,18 @@ export default function BuildsApprovalPage() {
     const pageSize = 12;
     const totalPages = Math.ceil(total / pageSize);
 
-    const userEmail = user?.primaryEmailAddress?.emailAddress || "";
+    // Create JWT-authenticated moderation API
+    const moderationApi = useMemo(() => {
+        if (!getToken) return null;
+        return createModerationApi(getToken);
+    }, [getToken]);
 
     const fetchBuilds = useCallback(async () => {
-        if (!userEmail) return;
+        if (!moderationApi) return;
 
         setLoading(true);
         try {
-            const data = await getPendingBuilds(userEmail, page, pageSize);
+            const data = await moderationApi.getPendingBuilds(page, pageSize);
             setBuilds(data.builds);
             setTotal(data.total);
         } catch (error) {
@@ -80,13 +83,13 @@ export default function BuildsApprovalPage() {
         } finally {
             setLoading(false);
         }
-    }, [userEmail, page]);
+    }, [moderationApi, page]);
 
     useEffect(() => {
-        if (isSignedIn) {
+        if (isSignedIn && moderationApi) {
             fetchBuilds();
         }
-    }, [isSignedIn, fetchBuilds]);
+    }, [isSignedIn, moderationApi, fetchBuilds]);
 
     if (!isLoaded) {
         return (
@@ -101,11 +104,11 @@ export default function BuildsApprovalPage() {
     }
 
     const handleApprove = async (buildId: string) => {
-        if (!userEmail) return;
+        if (!moderationApi) return;
 
         setProcessingId(buildId);
         try {
-            await approveBuild(buildId, userEmail);
+            await moderationApi.approveBuild(buildId);
             toast.success("Build approved successfully!");
             setBuilds((prev) => prev.filter((b) => b.id !== buildId));
             setTotal((prev) => prev - 1);
@@ -118,11 +121,11 @@ export default function BuildsApprovalPage() {
     };
 
     const handleReject = async () => {
-        if (!userEmail || !selectedBuild) return;
+        if (!moderationApi || !selectedBuild) return;
 
         setProcessingId(selectedBuild.id);
         try {
-            await rejectBuild(selectedBuild.id, userEmail, rejectReason);
+            await moderationApi.rejectBuild(selectedBuild.id, rejectReason);
             toast.success("Build rejected");
             setBuilds((prev) => prev.filter((b) => b.id !== selectedBuild.id));
             setTotal((prev) => prev - 1);

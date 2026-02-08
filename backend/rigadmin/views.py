@@ -11,6 +11,10 @@ They MUST NOT:
     - Contain business logic
     - Access Supabase directly
     - Contain complex conditionals
+    
+SECURITY NOTE:
+    All admin endpoints require a valid Clerk JWT token in the Authorization header.
+    User email is extracted from the verified token, not from request body/params.
 """
 
 from rest_framework import status
@@ -18,6 +22,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from rigadmin.services import admin_service, invite_service
+from rigadmin.clerk_auth import get_verified_user_email
 from rigadmin.serializers import (
     AdminCheckSerializer,
     AdminProfileSerializer,
@@ -30,30 +35,29 @@ from rigadmin.serializers import (
 
 class AdminCheckView(APIView):
     """
-    Check if a user is an admin.
+    Check if the authenticated user is an admin.
     
     POST /api/admin/check/
+    
+    Requires: Authorization: Bearer <clerk_token>
+    Returns: { is_admin: boolean }
     """
     
     def post(self, request):
         """
-        Check admin status by email.
+        Check admin status using JWT-verified email.
         
-        Request body:
-            - email (required): User's email address
-            
-        Returns:
-            { is_admin: boolean }
+        The user's email is extracted from the verified Clerk JWT token,
+        ensuring the request is authenticated and the admin check is secure.
         """
-        serializer = AdminCheckSerializer(data=request.data)
+        email = get_verified_user_email(request)
         
-        if not serializer.is_valid():
+        if not email:
             return Response(
-                {"errors": serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
-        email = serializer.validated_data["email"]
         is_admin = admin_service.is_admin(email)
         
         return Response({"is_admin": is_admin}, status=status.HTTP_200_OK)
@@ -63,25 +67,24 @@ class AdminMeView(APIView):
     """
     Get current admin profile.
     
-    GET /api/admin/me/?email=<email>
+    GET /api/admin/me/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def get(self, request):
         """
-        Get admin profile by email.
-        
-        Query params:
-            - email (required): User's email address
+        Get admin profile using JWT-verified email.
             
         Returns:
-            Admin profile data or 403 if not admin
+            Admin profile data or 401/403 if not authenticated/admin
         """
-        email = request.query_params.get("email")
+        email = get_verified_user_email(request)
         
         if not email:
             return Response(
-                {"error": "Email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         admin = admin_service.get_admin_profile(email)
@@ -100,23 +103,23 @@ class InviteListCreateView(APIView):
     """
     List pending invites or create a new invite.
     
-    GET /api/admin/invites/?email=<admin_email>
+    GET /api/admin/invites/
     POST /api/admin/invites/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def get(self, request):
         """
         List pending invites created by the admin.
-        
-        Query params:
-            - email (required): Admin's email address
+        Uses JWT-verified email for authorization.
         """
-        email = request.query_params.get("email")
+        email = get_verified_user_email(request)
         
         if not email:
             return Response(
-                {"error": "Email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         # Verify admin status
@@ -134,20 +137,18 @@ class InviteListCreateView(APIView):
     def post(self, request):
         """
         Create a new admin invite.
+        Uses JWT-verified email for authorization.
         
         Request body:
             - email (required): Target email to invite
             - expires_hours (optional): Hours until expiry (default 72)
-            
-        Query params:
-            - admin_email (required): Creator's email for authorization
         """
-        admin_email = request.query_params.get("admin_email")
+        admin_email = get_verified_user_email(request)
         
         if not admin_email:
             return Response(
-                {"error": "admin_email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         serializer = InviteCreateSerializer(data=request.data)
@@ -264,25 +265,27 @@ class PendingBuildsView(APIView):
     """
     List pending builds for approval.
     
-    GET /api/admin/builds/pending/?email=<admin_email>
+    GET /api/admin/builds/pending/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def get(self, request):
         """
         Get paginated list of pending builds.
+        Uses JWT-verified email for authorization.
         
         Query params:
-            - email (required): Admin's email for authorization
             - page (int): Page number, default 1
             - pageSize (int): Items per page, default 12
         """
         from rigadmin.services import build_moderation_service
         
-        email = request.query_params.get("email")
+        email = get_verified_user_email(request)
         if not email:
             return Response(
-                {"error": "Email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         # Verify admin status
@@ -312,23 +315,23 @@ class PendingBuildsCountView(APIView):
     """
     Get count of pending builds for dashboard badge.
     
-    GET /api/admin/builds/pending/count/?email=<admin_email>
+    GET /api/admin/builds/pending/count/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def get(self, request):
         """
         Get count of pending builds.
-        
-        Query params:
-            - email (required): Admin's email for authorization
+        Uses JWT-verified email for authorization.
         """
         from rigadmin.services import build_moderation_service
         
-        email = request.query_params.get("email")
+        email = get_verified_user_email(request)
         if not email:
             return Response(
-                {"error": "Email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         # Verify admin status
@@ -348,29 +351,28 @@ class BuildApproveView(APIView):
     Approve a build.
     
     POST /api/admin/builds/<id>/approve/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def post(self, request, build_id):
         """
         Approve a build for public display.
-        
-        Request body:
-            - admin_email (str): Email of the approving admin
+        Uses JWT-verified email for authorization.
         """
         from rigadmin.services import build_moderation_service
-        from rigadmin.serializers import BuildApprovalSerializer
         
-        serializer = BuildApprovalSerializer(data=request.data)
+        admin_email = get_verified_user_email(request)
         
-        if not serializer.is_valid():
+        if not admin_email:
             return Response(
-                {"errors": serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         result, error = build_moderation_service.approve_build(
             build_id=build_id,
-            admin_email=serializer.validated_data["admin_email"],
+            admin_email=admin_email,
         )
         
         if error:
@@ -390,31 +392,34 @@ class BuildRejectView(APIView):
     Reject a build.
     
     POST /api/admin/builds/<id>/reject/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def post(self, request, build_id):
         """
         Reject a build.
+        Uses JWT-verified email for authorization.
         
         Request body:
-            - admin_email (str): Email of the rejecting admin
             - reason (str, optional): Reason for rejection
         """
         from rigadmin.services import build_moderation_service
-        from rigadmin.serializers import BuildRejectionSerializer
         
-        serializer = BuildRejectionSerializer(data=request.data)
+        admin_email = get_verified_user_email(request)
         
-        if not serializer.is_valid():
+        if not admin_email:
             return Response(
-                {"errors": serializer.errors},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
+        
+        reason = request.data.get("reason")
         
         result, error = build_moderation_service.reject_build(
             build_id=build_id,
-            admin_email=serializer.validated_data["admin_email"],
-            reason=serializer.validated_data.get("reason"),
+            admin_email=admin_email,
+            reason=reason,
         )
         
         if error:
@@ -435,26 +440,28 @@ class AllCommentsView(APIView):
     """
     List all comments for moderation.
     
-    GET /api/admin/comments/?email=<admin_email>
+    GET /api/admin/comments/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def get(self, request):
         """
         Get paginated list of all comments.
+        Uses JWT-verified email for authorization.
         
         Query params:
-            - email (required): Admin's email for authorization
             - page (int): Page number, default 1
             - pageSize (int): Items per page, default 20
             - search (str): Optional search term
         """
         from rigadmin.services import user_moderation_service
         
-        email = request.query_params.get("email")
+        email = get_verified_user_email(request)
         if not email:
             return Response(
-                {"error": "Email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         # Verify admin status
@@ -485,26 +492,28 @@ class SanctionsView(APIView):
     """
     List or create user sanctions.
     
-    GET /api/admin/sanctions/?email=<admin_email>
+    GET /api/admin/sanctions/
     POST /api/admin/sanctions/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def get(self, request):
         """
         Get paginated list of active sanctions.
+        Uses JWT-verified email for authorization.
         
         Query params:
-            - email (required): Admin's email for authorization
             - page (int): Page number, default 1
             - pageSize (int): Items per page, default 20
         """
         from rigadmin.services import user_moderation_service
         
-        email = request.query_params.get("email")
+        email = get_verified_user_email(request)
         if not email:
             return Response(
-                {"error": "Email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         # Verify admin status
@@ -532,31 +541,42 @@ class SanctionsView(APIView):
     def post(self, request):
         """
         Create a new sanction.
+        Uses JWT-verified email for authorization.
         
         Request body:
-            - admin_email (str): Email of the admin creating the sanction
             - user_id (str): UUID of the user to sanction
             - sanction_type (str): 'timeout' or 'permanent_ban'
             - reason (str, optional): Reason for sanction
             - duration_days (int): Days for timeout (required for timeout type)
         """
         from rigadmin.services import user_moderation_service
-        from rigadmin.serializers import SanctionCreateSerializer, SanctionSerializer
+        from rigadmin.serializers import SanctionSerializer
         
-        serializer = SanctionCreateSerializer(data=request.data)
-        
-        if not serializer.is_valid():
+        admin_email = get_verified_user_email(request)
+        if not admin_email:
             return Response(
-                {"errors": serializer.errors},
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        # Extract sanction data from request body
+        user_id = request.data.get("user_id")
+        sanction_type = request.data.get("sanction_type")
+        reason = request.data.get("reason")
+        duration_days = request.data.get("duration_days")
+        
+        if not user_id or not sanction_type:
+            return Response(
+                {"error": "user_id and sanction_type are required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         result, error = user_moderation_service.sanction_user(
-            user_id=str(serializer.validated_data["user_id"]),
-            admin_email=serializer.validated_data["admin_email"],
-            sanction_type=serializer.validated_data["sanction_type"],
-            reason=serializer.validated_data.get("reason"),
-            duration_days=serializer.validated_data.get("duration_days"),
+            user_id=str(user_id),
+            admin_email=admin_email,
+            sanction_type=sanction_type,
+            reason=reason,
+            duration_days=duration_days,
         )
         
         if error:
@@ -573,23 +593,23 @@ class SanctionDetailView(APIView):
     """
     Remove a sanction.
     
-    DELETE /api/admin/sanctions/<id>/?email=<admin_email>
+    DELETE /api/admin/sanctions/<id>/
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
     
     def delete(self, request, sanction_id):
         """
         Remove (deactivate) a sanction.
-        
-        Query params:
-            - email (required): Admin's email for authorization
+        Uses JWT-verified email for authorization.
         """
         from rigadmin.services import user_moderation_service
         
-        email = request.query_params.get("email")
+        email = get_verified_user_email(request)
         if not email:
             return Response(
-                {"error": "Email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         
         success, error = user_moderation_service.remove_sanction(

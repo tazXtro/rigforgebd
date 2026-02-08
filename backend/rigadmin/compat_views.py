@@ -2,6 +2,10 @@
 Admin compatibility views (controllers).
 
 Thin controllers for viewing and fixing missing compatibility data.
+
+SECURITY NOTE:
+    All admin endpoints require a valid Clerk JWT token in the Authorization header.
+    User email is extracted from the verified token, not from request body/params.
 """
 
 from rest_framework import status
@@ -9,9 +13,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from rigadmin.compat_service import admin_compat_service
+from rigadmin.clerk_auth import get_verified_user_email
 from rigadmin.compat_serializers import (
-    CompatQuerySerializer,
-    CompatUpdateSerializer,
     MissingCompatRecordSerializer,
     MissingCompatCountSerializer,
 )
@@ -19,17 +22,19 @@ from rigadmin.compat_serializers import (
 
 class MissingCompatCountView(APIView):
     """
-    GET /api/admin/compat/missing/count/?admin_email=...
-
+    GET /api/admin/compat/missing/count/
+    
     Returns counts of products with missing compat fields per component type.
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
 
     def get(self, request):
-        admin_email = request.query_params.get("admin_email")
+        admin_email = get_verified_user_email(request)
         if not admin_email:
             return Response(
-                {"error": "admin_email query parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED,
             )
 
         counts, error = admin_compat_service.get_missing_counts(admin_email)
@@ -47,33 +52,37 @@ class MissingCompatCountView(APIView):
 
 class MissingCompatListView(APIView):
     """
-    GET /api/admin/compat/missing/?admin_email=...&component_type=cpu&page=1&page_size=20
-
+    GET /api/admin/compat/missing/?component_type=cpu&page=1&page_size=20
+    
     Returns paginated list of products with missing compat fields.
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
 
     def get(self, request):
-        # Build serializer data from query params
-        query_data = {
-            "admin_email": request.query_params.get("admin_email", ""),
-            "component_type": request.query_params.get("component_type", "all"),
-            "page": request.query_params.get("page", 1),
-            "page_size": request.query_params.get("page_size", 20),
-        }
-
-        serializer = CompatQuerySerializer(data=query_data)
-        if not serializer.is_valid():
+        admin_email = get_verified_user_email(request)
+        if not admin_email:
             return Response(
-                {"errors": serializer.errors},
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        
+        # Extract query params
+        component_type = request.query_params.get("component_type", "all")
+        try:
+            page = int(request.query_params.get("page", 1))
+            page_size = int(request.query_params.get("page_size", 20))
+        except ValueError:
+            return Response(
+                {"error": "page and page_size must be integers"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        data = serializer.validated_data
         result, error = admin_compat_service.get_missing_records(
-            admin_email=data["admin_email"],
-            component_type=data["component_type"],
-            page=data["page"],
-            page_size=data["page_size"],
+            admin_email=admin_email,
+            component_type=component_type,
+            page=page,
+            page_size=page_size,
         )
 
         if error:
@@ -103,25 +112,36 @@ class MissingCompatListView(APIView):
 class CompatUpdateView(APIView):
     """
     PATCH /api/admin/compat/<product_id>/
-
+    
     Update compatibility fields for a product (admin manual fix).
+    
+    Requires: Authorization: Bearer <clerk_token>
     """
 
     def patch(self, request, product_id):
-        serializer = CompatUpdateSerializer(data=request.data)
-        if not serializer.is_valid():
+        admin_email = get_verified_user_email(request)
+        if not admin_email:
             return Response(
-                {"errors": serializer.errors},
+                {"error": "Authentication required"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        
+        # Extract compat fields from request body (without admin_email)
+        compat_data = {}
+        for field in ["cpu_socket", "mobo_socket", "memory_type", "memory_max_speed_mhz"]:
+            if field in request.data:
+                compat_data[field] = request.data[field]
+        
+        if not compat_data:
+            return Response(
+                {"error": "At least one compat field is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        data = serializer.validated_data
-        admin_email = data.pop("admin_email")
 
         updated, error = admin_compat_service.update_compat(
             product_id=product_id,
             admin_email=admin_email,
-            data=data,
+            data=compat_data,
         )
 
         if error:

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useUser } from "@clerk/nextjs";
+import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -45,9 +45,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
 import {
-    getMissingCompatCounts,
-    getMissingCompatRecords,
-    updateCompatFields,
+    createCompatApi,
     MissingCompatRecord,
     MissingCompatCounts,
 } from "@/lib/adminCompatApi";
@@ -80,8 +78,13 @@ const FIELD_LABELS: Record<string, string> = {
 // ==================== Component ====================
 
 export default function CompatibilityPage() {
-    const { user } = useUser();
-    const userEmail = user?.primaryEmailAddress?.emailAddress || "";
+    const { getToken, isLoaded: isAuthLoaded } = useAuth();
+
+    // Create JWT-authenticated compat API
+    const compatApi = useMemo(() => {
+        if (!getToken) return null;
+        return createCompatApi(getToken);
+    }, [getToken]);
 
     // State
     const [counts, setCounts] = useState<MissingCompatCounts | null>(null);
@@ -103,21 +106,20 @@ export default function CompatibilityPage() {
     // ==================== Data Fetching ====================
 
     const fetchCounts = useCallback(async () => {
-        if (!userEmail) return;
-        const { counts: c, error } = await getMissingCompatCounts(userEmail);
+        if (!compatApi) return;
+        const { counts: c, error } = await compatApi.getMissingCompatCounts();
         if (error) {
             toast.error(error);
             return;
         }
         if (c) setCounts(c);
-    }, [userEmail]);
+    }, [compatApi]);
 
     const fetchRecords = useCallback(async () => {
-        if (!userEmail) return;
+        if (!compatApi) return;
         setLoading(true);
         try {
-            const { data, error } = await getMissingCompatRecords(
-                userEmail,
+            const { data, error } = await compatApi.getMissingCompatRecords(
                 filter,
                 page,
                 pageSize
@@ -133,7 +135,7 @@ export default function CompatibilityPage() {
         } finally {
             setLoading(false);
         }
-    }, [userEmail, filter, page]);
+    }, [compatApi, filter, page]);
 
     useEffect(() => {
         fetchCounts();
@@ -167,12 +169,12 @@ export default function CompatibilityPage() {
     };
 
     const handleSave = async () => {
-        if (!editRecord || !userEmail) return;
+        if (!editRecord || !compatApi) return;
         setSaving(true);
 
         try {
             // Build payload with only the fields relevant to the component type
-            const payload: Record<string, unknown> = { admin_email: userEmail };
+            const payload: Record<string, unknown> = {};
 
             if (editRecord.component_type === "cpu") {
                 if (editValues.cpu_socket) payload.cpu_socket = editValues.cpu_socket;
@@ -187,9 +189,9 @@ export default function CompatibilityPage() {
                     payload.memory_max_speed_mhz = Number(editValues.memory_max_speed_mhz);
             }
 
-            const { success, error } = await updateCompatFields(
+            const { success, error } = await compatApi.updateCompatFields(
                 editRecord.product_id,
-                payload as unknown as Parameters<typeof updateCompatFields>[1]
+                payload as unknown as Parameters<typeof compatApi.updateCompatFields>[1]
             );
 
             if (error) {
@@ -213,10 +215,10 @@ export default function CompatibilityPage() {
 
     const displayedRecords = searchQuery
         ? records.filter(
-              (r) =>
-                  r.product_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  r.product_brand?.toLowerCase().includes(searchQuery.toLowerCase())
-          )
+            (r) =>
+                r.product_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                r.product_brand?.toLowerCase().includes(searchQuery.toLowerCase())
+        )
         : records;
 
     // ==================== Render ====================
@@ -277,11 +279,10 @@ export default function CompatibilityPage() {
                                     className="text-left"
                                 >
                                     <Card
-                                        className={`transition-all duration-200 cursor-pointer ${
-                                            isActive
+                                        className={`transition-all duration-200 cursor-pointer ${isActive
                                                 ? "ring-2 ring-primary border-primary/50"
                                                 : "hover:border-border"
-                                        }`}
+                                            }`}
                                     >
                                         <CardContent className="p-5">
                                             <div className="flex items-center justify-between">
@@ -296,7 +297,7 @@ export default function CompatibilityPage() {
                                                             {type === "ram"
                                                                 ? "RAM"
                                                                 : type.charAt(0).toUpperCase() +
-                                                                  type.slice(1)}
+                                                                type.slice(1)}
                                                         </p>
                                                         <p className="text-2xl font-bold text-foreground">
                                                             {count}
@@ -459,9 +460,9 @@ export default function CompatibilityPage() {
                                                             {record.component_type === "ram"
                                                                 ? "RAM"
                                                                 : record.component_type
-                                                                      .charAt(0)
-                                                                      .toUpperCase() +
-                                                                  record.component_type.slice(1)}
+                                                                    .charAt(0)
+                                                                    .toUpperCase() +
+                                                                record.component_type.slice(1)}
                                                         </Badge>
                                                     </td>
 
@@ -577,13 +578,12 @@ export default function CompatibilityPage() {
                                                         <div className="flex items-center gap-2">
                                                             <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
                                                                 <div
-                                                                    className={`h-full rounded-full ${
-                                                                        record.confidence >= 0.7
+                                                                    className={`h-full rounded-full ${record.confidence >= 0.7
                                                                             ? "bg-emerald-500"
                                                                             : record.confidence >= 0.4
-                                                                            ? "bg-yellow-500"
-                                                                            : "bg-red-500"
-                                                                    }`}
+                                                                                ? "bg-yellow-500"
+                                                                                : "bg-red-500"
+                                                                        }`}
                                                                     style={{
                                                                         width: `${Math.round(record.confidence * 100)}%`,
                                                                     }}
@@ -779,49 +779,49 @@ export default function CompatibilityPage() {
                             {/* Memory Type (for motherboard & RAM) */}
                             {(editRecord.component_type === "motherboard" ||
                                 editRecord.component_type === "ram") && (
-                                <div className="space-y-2">
-                                    <Label htmlFor="memory_type">
-                                        Memory Type{" "}
-                                        {editRecord.missing_fields.includes("memory_type") && (
-                                            <span className="text-red-500">*</span>
-                                        )}
-                                    </Label>
-                                    <Select
-                                        value={
-                                            MEMORY_TYPE_OPTIONS.includes(String(editValues.memory_type))
-                                                ? String(editValues.memory_type)
-                                                : ""
-                                        }
-                                        onValueChange={(v: string) =>
-                                            setEditValues((prev) => ({ ...prev, memory_type: v }))
-                                        }
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select memory type..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {MEMORY_TYPE_OPTIONS.map((t) => (
-                                                <SelectItem key={t} value={t}>
-                                                    {t}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">
-                                        Or type a custom value:
-                                    </p>
-                                    <Input
-                                        placeholder="e.g. DDR3, LPDDR5X"
-                                        value={String(editValues.memory_type || "")}
-                                        onChange={(e) =>
-                                            setEditValues((prev) => ({
-                                                ...prev,
-                                                memory_type: e.target.value,
-                                            }))
-                                        }
-                                    />
-                                </div>
-                            )}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="memory_type">
+                                            Memory Type{" "}
+                                            {editRecord.missing_fields.includes("memory_type") && (
+                                                <span className="text-red-500">*</span>
+                                            )}
+                                        </Label>
+                                        <Select
+                                            value={
+                                                MEMORY_TYPE_OPTIONS.includes(String(editValues.memory_type))
+                                                    ? String(editValues.memory_type)
+                                                    : ""
+                                            }
+                                            onValueChange={(v: string) =>
+                                                setEditValues((prev) => ({ ...prev, memory_type: v }))
+                                            }
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select memory type..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {MEMORY_TYPE_OPTIONS.map((t) => (
+                                                    <SelectItem key={t} value={t}>
+                                                        {t}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            Or type a custom value:
+                                        </p>
+                                        <Input
+                                            placeholder="e.g. DDR3, LPDDR5X"
+                                            value={String(editValues.memory_type || "")}
+                                            onChange={(e) =>
+                                                setEditValues((prev) => ({
+                                                    ...prev,
+                                                    memory_type: e.target.value,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                )}
 
                             {/* Memory Speed (for RAM only) */}
                             {editRecord.component_type === "ram" && (

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useUser } from "@clerk/nextjs";
+import { useUser, useAuth } from "@clerk/nextjs";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -53,10 +53,7 @@ import {
 import { toast } from "sonner";
 
 import {
-    getAllComments,
-    getActiveSanctions,
-    createSanction,
-    removeSanction,
+    createModerationApi,
     ModerationComment,
     Sanction,
 } from "@/lib/moderationApi";
@@ -71,6 +68,7 @@ const DURATION_OPTIONS = [
 
 export default function ModerationPage() {
     const { user, isLoaded, isSignedIn } = useUser();
+    const { getToken, isLoaded: isAuthLoaded } = useAuth();
     const [activeTab, setActiveTab] = useState("comments");
 
     // Comments state
@@ -97,14 +95,18 @@ export default function ModerationPage() {
     const commentsTotalPages = Math.ceil(commentsTotal / pageSize);
     const sanctionsTotalPages = Math.ceil(sanctionsTotal / pageSize);
 
-    const userEmail = user?.primaryEmailAddress?.emailAddress || "";
+    // Create JWT-authenticated moderation API
+    const moderationApi = useMemo(() => {
+        if (!getToken) return null;
+        return createModerationApi(getToken);
+    }, [getToken]);
 
     const fetchComments = useCallback(async () => {
-        if (!userEmail) return;
+        if (!moderationApi) return;
 
         setCommentsLoading(true);
         try {
-            const data = await getAllComments(userEmail, commentsPage, pageSize, searchQuery);
+            const data = await moderationApi.getAllComments(commentsPage, pageSize, searchQuery);
             setComments(data.comments);
             setCommentsTotal(data.total);
         } catch (error) {
@@ -113,14 +115,14 @@ export default function ModerationPage() {
         } finally {
             setCommentsLoading(false);
         }
-    }, [userEmail, commentsPage, searchQuery]);
+    }, [moderationApi, commentsPage, searchQuery]);
 
     const fetchSanctions = useCallback(async () => {
-        if (!userEmail) return;
+        if (!moderationApi) return;
 
         setSanctionsLoading(true);
         try {
-            const data = await getActiveSanctions(userEmail, sanctionsPage, pageSize);
+            const data = await moderationApi.getActiveSanctions(sanctionsPage, pageSize);
             setSanctions(data.sanctions);
             setSanctionsTotal(data.total);
         } catch (error) {
@@ -129,17 +131,17 @@ export default function ModerationPage() {
         } finally {
             setSanctionsLoading(false);
         }
-    }, [userEmail, sanctionsPage]);
+    }, [moderationApi, sanctionsPage]);
 
     useEffect(() => {
-        if (isSignedIn) {
+        if (isSignedIn && moderationApi) {
             if (activeTab === "comments") {
                 fetchComments();
             } else {
                 fetchSanctions();
             }
         }
-    }, [isSignedIn, activeTab, fetchComments, fetchSanctions]);
+    }, [isSignedIn, moderationApi, activeTab, fetchComments, fetchSanctions]);
 
     if (!isLoaded) {
         return (
@@ -159,13 +161,12 @@ export default function ModerationPage() {
     };
 
     const handleCreateSanction = async () => {
-        if (!userEmail || !selectedUser) return;
+        if (!moderationApi || !selectedUser) return;
 
         setProcessing(true);
         try {
             const isPermanent = sanctionDuration === "permanent";
-            await createSanction(
-                userEmail,
+            await moderationApi.createSanction(
                 selectedUser.id,
                 isPermanent ? "permanent_ban" : "timeout",
                 sanctionReason || undefined,
@@ -188,11 +189,11 @@ export default function ModerationPage() {
     };
 
     const handleRemoveSanction = async (sanctionId: string) => {
-        if (!userEmail) return;
+        if (!moderationApi) return;
 
         setProcessing(true);
         try {
-            await removeSanction(sanctionId, userEmail);
+            await moderationApi.removeSanction(sanctionId);
             toast.success("Sanction removed");
             setSanctions((prev) => prev.filter((s) => s.id !== sanctionId));
             setSanctionsTotal((prev) => prev - 1);

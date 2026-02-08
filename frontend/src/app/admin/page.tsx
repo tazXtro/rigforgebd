@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useUser, useAuth } from "@clerk/nextjs";
 import {
     CheckCircle2,
     Shield,
@@ -13,8 +13,8 @@ import {
     Settings,
     X,
 } from "lucide-react";
-import { getPendingBuildsCount } from "@/lib/moderationApi";
-import { getMissingCompatCounts } from "@/lib/adminCompatApi";
+import { createModerationApi } from "@/lib/moderationApi";
+import { createCompatApi } from "@/lib/adminCompatApi";
 
 interface AdminCard {
     id: string;
@@ -77,6 +77,7 @@ const adminCards: AdminCard[] = [
 
 export default function AdminPage() {
     const { user, isSignedIn } = useUser();
+    const { getToken, isLoaded: isAuthLoaded } = useAuth();
     const [isOpen, setIsOpen] = useState(false);
     const [activeIndex, setActiveIndex] = useState(-1);
     const [radius, setRadius] = useState(280);
@@ -84,15 +85,24 @@ export default function AdminPage() {
     const [missingCompatCount, setMissingCompatCount] = useState(0);
     const router = useRouter();
 
-    const userEmail = user?.primaryEmailAddress?.emailAddress || "";
+    // Create JWT-authenticated API instances
+    const moderationApi = useMemo(() => {
+        if (!getToken) return null;
+        return createModerationApi(getToken);
+    }, [getToken]);
+
+    const compatApi = useMemo(() => {
+        if (!getToken) return null;
+        return createCompatApi(getToken);
+    }, [getToken]);
 
     // Fetch pending builds count with polling
     useEffect(() => {
-        if (!userEmail) return;
+        if (!isAuthLoaded || !moderationApi) return;
 
         const fetchCount = async () => {
             try {
-                const count = await getPendingBuildsCount(userEmail);
+                const count = await moderationApi.getPendingBuildsCount();
                 setPendingBuildsCount(count);
             } catch (error) {
                 console.error("Failed to fetch pending count:", error);
@@ -106,15 +116,15 @@ export default function AdminPage() {
         const interval = setInterval(fetchCount, 30000);
 
         return () => clearInterval(interval);
-    }, [userEmail]);
+    }, [isAuthLoaded, moderationApi]);
 
     // Fetch missing compat count with polling
     useEffect(() => {
-        if (!userEmail) return;
+        if (!isAuthLoaded || !compatApi) return;
 
         const fetchCompatCount = async () => {
             try {
-                const { counts } = await getMissingCompatCounts(userEmail);
+                const { counts } = await compatApi.getMissingCompatCounts();
                 if (counts) setMissingCompatCount(counts.total);
             } catch (error) {
                 console.error("Failed to fetch compat count:", error);
@@ -124,7 +134,7 @@ export default function AdminPage() {
         fetchCompatCount();
         const interval = setInterval(fetchCompatCount, 30000);
         return () => clearInterval(interval);
-    }, [userEmail]);
+    }, [isAuthLoaded, compatApi]);
 
     // Responsive radius based on viewport
     useEffect(() => {

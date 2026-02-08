@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@clerk/nextjs"
 import { motion, AnimatePresence } from "framer-motion"
 import {
     ArrowLeft,
@@ -28,12 +29,7 @@ import { EditableField } from "./EditableField"
 import { EditableSpecs } from "./EditableSpecs"
 import { cn } from "@/lib/utils"
 import { useIsAdmin } from "@/hooks/useIsAdmin"
-import {
-    adminUpdateProduct,
-    adminUpdateSpecs,
-    adminUpdatePrice,
-    adminDeleteProduct,
-} from "@/lib/adminProductApi"
+import { createProductApi, ProductApi } from "@/lib/adminProductApi"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -56,9 +52,16 @@ export function ProductDetailClient({ product: initialProduct }: ProductDetailCl
     const [specsOpen, setSpecsOpen] = useState(true)
     const [isDeleting, setIsDeleting] = useState(false)
     const router = useRouter()
+    const { getToken } = useAuth()
 
     // Admin check
-    const { isAdmin, adminEmail } = useIsAdmin()
+    const { isAdmin } = useIsAdmin()
+
+    // Create JWT-authenticated product API
+    const productApi = useMemo(() => {
+        if (!getToken) return null
+        return createProductApi(getToken)
+    }, [getToken])
 
     // Format price with Taka symbol
     const formatPrice = (price: number) => `৳${price.toLocaleString("en-BD")}`
@@ -97,8 +100,8 @@ export function ProductDetailClient({ product: initialProduct }: ProductDetailCl
     // ========== Admin Edit Handlers ==========
     const handleUpdateField = useCallback(
         async (field: string, newValue: string): Promise<{ error?: string }> => {
-            const result = await adminUpdateProduct(product.id, {
-                admin_email: adminEmail,
+            if (!productApi) return { error: "Not authenticated" }
+            const result = await productApi.updateProduct(product.id, {
                 [field]: newValue,
             })
             if (result.error) return { error: result.error }
@@ -113,48 +116,50 @@ export function ProductDetailClient({ product: initialProduct }: ProductDetailCl
             }
             return {}
         },
-        [product.id, adminEmail]
+        [product.id, productApi]
     )
 
     const handleUpdateSpecs = useCallback(
         async (newSpecs: Record<string, string>): Promise<{ error?: string }> => {
-            const result = await adminUpdateSpecs(product.id, {
-                admin_email: adminEmail,
+            if (!productApi) return { error: "Not authenticated" }
+            const result = await productApi.updateSpecs(product.id, {
                 specs: newSpecs,
             })
             if (result.error) return { error: result.error }
             setProduct((prev) => ({ ...prev, specs: result.specs || newSpecs }))
             return {}
         },
-        [product.id, adminEmail]
+        [product.id, productApi]
     )
 
     const handleUpdatePrice = useCallback(
         async (priceId: string, field: string, newValue: string): Promise<{ error?: string }> => {
-            const payload: Record<string, unknown> = { admin_email: adminEmail }
+            if (!productApi) return { error: "Not authenticated" }
+            const payload: Record<string, unknown> = {}
             if (field === "price") payload.price = parseFloat(newValue)
             else payload[field] = newValue
 
             // We need the price_id — however the current Product type doesn't carry it.
             // We use the retailer index to construct a PATCH. For now, use product-level price endpoint.
-            const result = await adminUpdatePrice(product.id, priceId, payload as any)
+            const result = await productApi.updatePrice(product.id, priceId, payload as any)
             if (result.error) return { error: result.error }
             return {}
         },
-        [product.id, adminEmail]
+        [product.id, productApi]
     )
 
     const handleDelete = useCallback(async () => {
+        if (!productApi) return
         if (!confirm("Are you sure you want to delete this product? This cannot be undone.")) return
         setIsDeleting(true)
-        const result = await adminDeleteProduct(product.id, adminEmail)
+        const result = await productApi.deleteProduct(product.id)
         setIsDeleting(false)
         if (result.error) {
             alert(result.error)
             return
         }
         router.push(`/products/${product.categorySlug}`)
-    }, [product.id, product.categorySlug, adminEmail, router])
+    }, [product.id, product.categorySlug, productApi, router])
 
     return (
         <div className="min-h-screen bg-muted/10 pb-12">
@@ -345,7 +350,7 @@ export function ProductDetailClient({ product: initialProduct }: ProductDetailCl
                                             formatPrice={formatPrice}
                                             isAdmin={isAdmin}
                                             productId={product.id}
-                                            adminEmail={adminEmail}
+                                            productApi={productApi}
                                             onPriceUpdated={(priceId, newPrice, newInStock) => {
                                                 setProduct((prev) => ({
                                                     ...prev,
@@ -445,7 +450,7 @@ interface RetailerRowProps {
     formatPrice: (n: number) => string
     isAdmin: boolean
     productId: string
-    adminEmail: string
+    productApi: ProductApi | null
     onPriceUpdated: (priceId: string, newPrice?: number, newInStock?: boolean) => void
 }
 
@@ -456,17 +461,16 @@ function RetailerRow({
     formatPrice,
     isAdmin,
     productId,
-    adminEmail,
+    productApi,
     onPriceUpdated,
 }: RetailerRowProps) {
     const [isTogglingStock, setIsTogglingStock] = useState(false)
 
     const handleToggleStock = async () => {
-        if (!retailer.priceId) return
+        if (!retailer.priceId || !productApi) return
         setIsTogglingStock(true)
         const newInStock = !retailer.inStock
-        const result = await adminUpdatePrice(productId, retailer.priceId, {
-            admin_email: adminEmail,
+        const result = await productApi.updatePrice(productId, retailer.priceId, {
             in_stock: newInStock,
         })
         setIsTogglingStock(false)
@@ -525,7 +529,7 @@ function RetailerRow({
 
             <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto">
                 <div className="text-right">
-                    {isAdmin && retailer.priceId ? (
+                    {isAdmin && retailer.priceId && productApi ? (
                         <EditableField
                             value={String(retailer.price)}
                             editable={true}
@@ -534,8 +538,7 @@ function RetailerRow({
                             onSave={async (newValue) => {
                                 const parsed = parseFloat(newValue)
                                 if (isNaN(parsed) || parsed < 0) return { error: "Invalid price" }
-                                const result = await adminUpdatePrice(productId, retailer.priceId!, {
-                                    admin_email: adminEmail,
+                                const result = await productApi.updatePrice(productId, retailer.priceId!, {
                                     price: parsed,
                                 })
                                 if (result.error) return { error: result.error }

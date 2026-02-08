@@ -11,6 +11,10 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -142,3 +146,25 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+
+# ---------------------------------------------------------
+# Clerk JWT Authentication Configuration
+# ---------------------------------------------------------
+import os
+
+# Clerk PEM Public Key for JWT verification
+# Get this from Clerk Dashboard -> API Keys -> "PEM Public Key"
+# Should be a multi-line PEM-formatted public key starting with:
+# -----BEGIN PUBLIC KEY-----
+CLERK_PEM_PUBLIC_KEY = os.environ.get("CLERK_PEM_PUBLIC_KEY", "")
+
+# Authorized parties (frontend URLs that are allowed to make requests)
+# This validates the 'azp' claim in the JWT
+# Set as comma-separated string in environment, e.g.: "http://localhost:3000,https://yourdomain.com"
+CLERK_AUTHORIZED_PARTIES = [
+    p.strip() 
+    for p in os.environ.get("CLERK_AUTHORIZED_PARTIES", "http://localhost:3000").split(",")
+    if p.strip()
+]
+
